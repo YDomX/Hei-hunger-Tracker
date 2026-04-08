@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0f0f">
+<title>Regel II – Frust-Tracker</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f0f0f;
+    --card: #141414;
+    --border: #1f1f1f;
+    --border2: #2a2a2a;
+    --text: #d4d4d4;
+    --text2: #999;
+    --text3: #666;
+    --text4: #444;
+    --accent: #facc15;
+    --accent-bg: #1a1a0a;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }
+  .header h1 { font-size: 22px; font-weight: 700; color: #e5e5e5; letter-spacing: 0.04em; }
+  .header .sub { font-size: 12px; color: var(--text3); margin-top: 3px; font-style: italic; letter-spacing: 0.02em; }
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; }
+  .count { font-size: 28px; font-weight: 700; color: #555; line-height: 1; }
+  .count-label { font-size: 10px; color: var(--text4); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #222;
+    margin-bottom: 20px;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px 0;
+    background: var(--card);
+    color: var(--text3);
+    border: none;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .tab.active {
+    background: #1c1c1c;
+    color: #e5e5e5;
+    font-weight: 600;
+    border-bottom: 2px solid var(--accent);
+  }
+
+  /* Form */
+  .form { display: flex; flex-direction: column; gap: 14px; }
+  .now-badge {
+    align-self: flex-end;
+    font-size: 11px;
+    color: #555;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  label.field-label {
+    font-size: 12px;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+
+  .emotion-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .emotion-btn {
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: #161616;
+    color: #888;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.12s;
+  }
+  .emotion-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  input[type="text"], textarea {
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--card);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    font-family: inherit;
+    width: 100%;
+  }
+  textarea { resize: vertical; min-height: 72px; }
+
+  .slider-wrap { display: flex; flex-direction: column; gap: 4px; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); height: 6px; cursor: pointer; }
+  .slider-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text4); }
+
+  .intensity-value { font-weight: 700; }
+  .int-green { color: #4ade80; }
+  .int-yellow { color: #facc15; }
+  .int-orange { color: #fb923c; }
+  .int-red { color: #f87171; }
+
+  .submit-btn {
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 4px;
+    letter-spacing: 0.03em;
+    font-family: inherit;
+    transition: opacity 0.15s;
+  }
+  .submit-btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* Entries */
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .empty { text-align: center; padding: 48px 16px; }
+  .empty p:first-child { color: #555; font-size: 14px; }
+  .empty p:last-child { color: var(--text4); font-size: 12px; margin-top: 6px; }
+
+  .entry {
+    background: var(--card);
+    border-radius: 8px;
+    padding: 14px 16px;
+    border: 1px solid #1c1c1c;
+    position: relative;
+  }
+  .entry-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .entry-date { font-size: 11px; color: #555; font-weight: 600; letter-spacing: 0.03em; }
+  .entry-time { font-size: 11px; color: var(--text4); font-variant-numeric: tabular-nums; }
+  .entry-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .emotion-tag { font-size: 13px; color: var(--accent); font-weight: 600; }
+  .intensity-dot {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--bg);
+    border-radius: 4px;
+    padding: 1px 6px;
+    line-height: 18px;
+  }
+  .entry-food { font-size: 13px; color: var(--text2); line-height: 1.45; }
+  .delete-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: #333;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+  }
+  .reset-btn {
+    margin-top: 12px;
+    padding: 8px;
+    background: none;
+    border: 1px solid #222;
+    border-radius: 6px;
+    color: var(--text4);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div>
+      <h1>Regel II</h1>
+      <p class="sub">Kein Urteil, nur Daten.</p>
+    </div>
+    <div class="header-right">
+      <span class="count" id="entryCount">0</span>
+      <span class="count-label">Einträge</span>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" id="tabList" onclick="showView('list')">Einträge</button>
+    <button class="tab" id="tabAdd" onclick="showView('add')">+ Neuer Eintrag</button>
+  </div>
+
+  <!-- Add Form -->
+  <div class="form hidden" id="viewAdd">
+    <div class="now-badge" id="nowBadge"></div>
+
+    <label class="field-label">Emotion</label>
+    <div class="emotion-grid" id="emotionGrid"></div>
+    <input type="text" id="customEmotion" class="hidden" placeholder="Eigene Emotion">
+
+    <label class="field-label">Intensität: <span id="intensityLabel" class="intensity-value int-yellow">5</span>/10</label>
+    <div class="slider-wrap">
+      <input type="range" min="1" max="10" value="5" id="intensitySlider" oninput="updateIntensity(this.value)">
+      <div class="slider-labels"><span>leicht</span><span>mittel</span><span>heftig</span></div>
+    </div>
+
+    <label class="field-label">Was gegessen / gegriffen?</label>
+    <textarea id="foodInput" placeholder="z.B. Tüte Chips, 2 Brötchen mit Käse..."></textarea>
+
+    <button class="submit-btn" id="submitBtn" onclick="submitEntry()" disabled>Eintragen</button>
+  </div>
+
+  <!-- Entry List -->
+  <div class="list" id="viewList"></div>
+</div>
+
+<script>
+const EMOTIONS = ["Frust", "Stress", "Langeweile", "Müdigkeit", "Trauer", "Wut", "Unruhe"];
+const STORAGE_KEY = "frust-tracker-entries";
+
+let entries = [];
+let selectedEmotion = "";
+let currentView = "list";
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) entries = JSON.parse(raw);
+  } catch {}
+  render();
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+}
+
+function intensityColor(v) {
+  if (v <= 3) return "#4ade80";
+  if (v <= 6) return "#facc15";
+  if (v <= 8) return "#fb923c";
+  return "#f87171";
+}
+
+function intensityClass(v) {
+  if (v <= 3) return "int-green";
+  if (v <= 6) return "int-yellow";
+  if (v <= 8) return "int-orange";
+  return "int-red";
+}
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function fmtTime(iso) {
+  return new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+}
+
+function showView(v) {
+  currentView = v;
+  document.getElementById("viewAdd").classList.toggle("hidden", v !== "add");
+  document.getElementById("viewList").classList.toggle("hidden", v !== "list");
+  document.getElementById("tabList").classList.toggle("active", v === "list");
+  document.getElementById("tabAdd").classList.toggle("active", v === "add");
+  if (v === "add") {
+    const now = new Date().toISOString();
+    document.getElementById("nowBadge").textContent = fmtDate(now) + " · " + fmtTime(now);
+  }
+  if (v === "list") render();
+}
+
+function buildEmotionGrid() {
+  const grid = document.getElementById("emotionGrid");
+  grid.innerHTML = "";
+  EMOTIONS.forEach(e => {
+    const btn = document.createElement("button");
+    btn.className = "emotion-btn" + (selectedEmotion === e ? " active" : "");
+    btn.textContent = e;
+    btn.onclick = () => { selectedEmotion = e; document.getElementById("customEmotion").classList.add("hidden"); buildEmotionGrid(); checkValid(); };
+    grid.appendChild(btn);
+  });
+  const other = document.createElement("button");
+  other.className = "emotion-btn" + (selectedEmotion === "__custom" ? " active" : "");
+  other.textContent = "Andere…";
+  other.onclick = () => { selectedEmotion = "__custom"; document.getElementById("customEmotion").classList.remove("hidden"); document.getElementById("customEmotion").focus(); buildEmotionGrid(); checkValid(); };
+  grid.appendChild(other);
+}
+
+function updateIntensity(v) {
+  const label = document.getElementById("intensityLabel");
+  label.textContent = v;
+  label.className = "intensity-value " + intensityClass(+v);
+}
+
+function checkValid() {
+  const emo = selectedEmotion === "__custom" ? document.getElementById("customEmotion").value.trim() : selectedEmotion;
+  const food = document.getElementById("foodInput").value.trim();
+  document.getElementById("submitBtn").disabled = !emo || !food;
+}
+
+function submitEntry() {
+  const emo = selectedEmotion === "__custom" ? document.getElementById("customEmotion").value.trim() : selectedEmotion;
+  const food = document.getElementById("foodInput").value.trim();
+  const intensity = +document.getElementById("intensitySlider").value;
+  if (!emo || !food) return;
+
+  entries.unshift({ id: Date.now(), ts: new Date().toISOString(), emotion: emo, intensity, food });
+  save();
+
+  selectedEmotion = "";
+  document.getElementById("customEmotion").value = "";
+  document.getElementById("customEmotion").classList.add("hidden");
+  document.getElementById("foodInput").value = "";
+  document.getElementById("intensitySlider").value = 5;
+  updateIntensity(5);
+  buildEmotionGrid();
+  checkValid();
+  showView("list");
+}
+
+function deleteEntry(id) {
+  entries = entries.filter(e => e.id !== id);
+  save();
+  render();
+}
+
+function resetAll() {
+  if (confirm("Alle Einträge löschen?")) {
+    entries = [];
+    save();
+    render();
+  }
+}
+
+function render() {
+  document.getElementById("entryCount").textContent = entries.length;
+  const list = document.getElementById("viewList");
+
+  if (entries.length === 0) {
+    list.innerHTML = '<div class="empty"><p>Noch keine Einträge.</p><p>Kein Eintrag ist ein guter Eintrag.</p></div>';
+    return;
+  }
+
+  list.innerHTML = entries.map(e => `
+    <div class="entry">
+      <div class="entry-header">
+        <span class="entry-date">${fmtDate(e.ts)}</span>
+        <span class="entry-time">${fmtTime(e.ts)}</span>
+      </div>
+      <div class="entry-meta">
+        <span class="emotion-tag">${e.emotion}</span>
+        <span class="intensity-dot" style="background:${intensityColor(e.intensity)}">${e.intensity}</span>
+      </div>
+      <p class="entry-food">${e.food}</p>
+      <button class="delete-btn" onclick="deleteEntry(${e.id})" title="Löschen">✕</button>
+    </div>
+  `).join("") + '<button class="reset-btn" onclick="resetAll()">Alle Einträge löschen</button>';
+}
+
+// Init
+document.getElementById("customEmotion").addEventListener("input", checkValid);
+document.getElementById("foodInput").addEventListener("input", checkValid);
+buildEmotionGrid();
+load();
+</script>
+</body>
+</html>
