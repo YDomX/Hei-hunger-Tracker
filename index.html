@@ -209,6 +209,19 @@
   }
 
   .hidden { display: none; }
+
+  .game-link {
+    display: block;
+    margin-top: 32px;
+    text-align: center;
+    font-size: 11px;
+    color: #313131;
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition: color 0.15s;
+  }
+  .game-link:hover { color: var(--text3); }
 </style>
 </head>
 <body>
@@ -251,6 +264,8 @@
 
   <!-- Entry List -->
   <div class="list" id="viewList"></div>
+
+  <a class="game-link" href="rumble.html">🎮 Rumble</a>
 </div>
 
 <script>
