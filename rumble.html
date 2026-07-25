@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0f0f">
+<title>Rumble 😎🤌</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0f0f0f;
+    --card: #141414;
+    --border: #1f1f1f;
+    --border2: #2a2a2a;
+    --text: #d4d4d4;
+    --text2: #999;
+    --text3: #666;
+    --text4: #444;
+    --accent: #facc15;
+    --accent-bg: #1a1a0a;
+    --enemy: #f87171;
+    --enemy-bg: #1a0d0d;
+    --light: #2b2b2b;
+    --dark: #1b1b1b;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app { max-width: 560px; margin: 0 auto; padding: 20px 14px 60px; }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+  }
+  .header h1 { font-size: 24px; font-weight: 700; color: #e5e5e5; letter-spacing: 0.06em; }
+  .header .sub { font-size: 12px; color: var(--text3); margin-top: 3px; font-style: italic; letter-spacing: 0.02em; }
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .round { font-size: 26px; font-weight: 700; color: #555; line-height: 1; }
+  .round-label { font-size: 10px; color: var(--text4); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .hidden { display: none !important; }
+
+  /* ---------- Auswahl ---------- */
+  .pick-intro { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 16px; }
+  .pick-intro strong { color: var(--accent); font-weight: 600; }
+
+  .char-list { display: flex; flex-direction: column; gap: 12px; }
+  .char-card {
+    background: var(--card);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+    width: 100%;
+    display: block;
+  }
+  .char-card:hover, .char-card.active { border-color: var(--accent); background: #17170c; }
+  .char-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .char-icon {
+    width: 44px; height: 44px; flex: none;
+    display: grid; place-items: center;
+    font-size: 24px;
+    border-radius: 10px;
+    background: #1c1c1c;
+    border: 1px solid var(--border2);
+  }
+  .char-name { font-size: 16px; font-weight: 700; color: #e5e5e5; letter-spacing: 0.02em; }
+  .char-role { font-size: 11px; color: var(--text4); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+
+  .char-body { display: flex; gap: 14px; align-items: flex-start; }
+  .mini-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 15px);
+    grid-template-rows: repeat(5, 15px);
+    gap: 2px;
+    flex: none;
+  }
+  .mini-cell { border-radius: 2px; background: #1c1c1c; }
+  .mini-cell.self { background: var(--accent); }
+  .mini-cell.reach { background: #4a4520; }
+
+  .char-info { flex: 1; min-width: 0; }
+  .info-row { margin-bottom: 8px; }
+  .info-row:last-child { margin-bottom: 0; }
+  .info-label {
+    font-size: 10px; color: #777; text-transform: uppercase;
+    letter-spacing: 0.08em; font-weight: 600; display: block; margin-bottom: 2px;
+  }
+  .info-text { font-size: 12.5px; color: var(--text2); line-height: 1.4; }
+  .ability-name { color: var(--accent); font-weight: 600; }
+
+  .start-btn {
+    margin-top: 18px;
+    width: 100%;
+    padding: 13px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    font-family: inherit;
+    transition: opacity 0.15s;
+  }
+  .start-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* ---------- Spielfeld ---------- */
+  .status-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    margin-bottom: 12px;
+    gap: 10px;
+  }
+  .turn-tag { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+  .turn-tag.you { color: var(--accent); }
+  .turn-tag.bot { color: var(--enemy); }
+  .turn-hint { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .side-counts { display: flex; gap: 10px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .side-counts span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.you { background: var(--accent); }
+  .dot.bot { background: var(--enemy); }
+
+  .board-wrap { position: relative; }
+  .board {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    aspect-ratio: 1;
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    grid-template-rows: repeat(10, 1fr);
+    border: 1px solid #333;
+    border-radius: 6px;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  .cell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    cursor: default;
+    user-select: none;
+  }
+  .cell.light { background: var(--light); }
+  .cell.dark { background: var(--dark); }
+  .cell.movable { cursor: pointer; }
+
+  .piece {
+    width: 84%; height: 84%;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: clamp(11px, 3.1vw, 17px);
+    line-height: 1;
+    border: 1.5px solid transparent;
+    position: relative;
+    transition: transform 0.12s;
+  }
+  .piece.you { background: var(--accent-bg); border-color: var(--accent); }
+  .piece.bot { background: var(--enemy-bg); border-color: var(--enemy); }
+  .piece.selected { transform: scale(1.1); box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(250,204,21,0.4); }
+  .piece.disabled { opacity: 0.4; filter: grayscale(1); }
+  .piece.actable { cursor: pointer; }
+
+  .badge {
+    position: absolute;
+    top: -3px; right: -3px;
+    font-size: 8px;
+    line-height: 1;
+    background: var(--bg);
+    border-radius: 50%;
+    padding: 1px;
+  }
+
+  .cell .marker {
+    position: absolute;
+    width: 26%; height: 26%;
+    border-radius: 50%;
+    background: rgba(250,204,21,0.55);
+    pointer-events: none;
+  }
+  .cell .ring {
+    position: absolute;
+    inset: 6%;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    pointer-events: none;
+  }
+  .cell .ring.kill { border-color: var(--enemy); box-shadow: 0 0 10px rgba(248,113,113,0.5); }
+  .cell .ring.stun { border-color: #a78bfa; box-shadow: 0 0 10px rgba(167,139,250,0.5); }
+
+  /* Panel unter dem Brett */
+  .panel {
+    margin-top: 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .panel-empty { font-size: 12px; color: var(--text4); text-align: center; padding: 6px 0; }
+  .sel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .sel-icon { font-size: 20px; }
+  .sel-name { font-size: 14px; font-weight: 700; color: #e5e5e5; }
+  .sel-move { font-size: 11px; color: var(--text3); margin-top: 1px; }
+
+  .ability-btn {
+    width: 100%;
+    padding: 10px;
+    border-radius: 7px;
+    border: 1px solid var(--accent);
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  .ability-btn:disabled { opacity: 0.35; cursor: default; border-color: var(--border2); color: var(--text4); background: #161616; }
+  .ability-btn.cancel { border-color: var(--enemy); color: var(--enemy); background: var(--enemy-bg); }
+  .ability-desc { font-size: 11.5px; color: var(--text3); line-height: 1.4; margin-top: 7px; }
+
+  .log {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 108px;
+    overflow-y: auto;
+  }
+  .log-line { font-size: 11.5px; color: var(--text3); line-height: 1.35; }
+  .log-line.you { color: #b8b8b8; }
+  .log-line.bot { color: #8a6a6a; }
+  .log-line b { color: var(--accent); font-weight: 600; }
+
+  .bottom-bar { display: flex; gap: 8px; margin-top: 14px; }
+  .ghost-btn {
+    flex: 1;
+    padding: 9px;
+    background: none;
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    color: var(--text3);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .ghost-btn:hover { color: var(--text2); border-color: #3a3a3a; }
+
+  .rules { margin-top: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .rules h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #777; margin-bottom: 8px; }
+  .rules ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .rules li { font-size: 12px; color: var(--text2); line-height: 1.45; padding-left: 14px; position: relative; }
+  .rules li::before { content: "▸"; position: absolute; left: 0; color: var(--text4); }
+
+  /* Overlay */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,10,10,0.88);
+    display: grid; place-items: center;
+    padding: 20px;
+    z-index: 50;
+  }
+  .overlay-card {
+    background: var(--card);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 28px 24px;
+    text-align: center;
+    max-width: 320px;
+    width: 100%;
+  }
+  .overlay-emoji { font-size: 44px; line-height: 1; }
+  .overlay-title { font-size: 22px; font-weight: 700; margin-top: 12px; letter-spacing: 0.03em; }
+  .overlay-title.win { color: var(--accent); }
+  .overlay-title.lose { color: var(--enemy); }
+  .overlay-text { font-size: 13px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+  .overlay-card .start-btn { margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div>
+      <h1>RUMBLE</h1>
+      <p class="sub">Dorf gegen Schatten gegen Familie. 😎🤌</p>
+    </div>
+    <div class="header-right hidden" id="roundBox">
+      <span class="round" id="roundNum">1</span>
+      <span class="round-label">Runde</span>
+    </div>
+  </header>
+
+  <!-- ============ SCREEN 1: CHARAKTERWAHL ============ -->
+  <div id="viewPick">
+    <p class="pick-intro">
+      Wähle deinen <strong>Hauptcharakter</strong>. Dein Team besteht aus
+      <strong>3×</strong> deiner Wahl und je <strong>1×</strong> der beiden anderen.
+      Der Gegner (Bot) wählt verdeckt.
+    </p>
+    <div class="char-list" id="charList"></div>
+    <button class="start-btn" id="startBtn" disabled onclick="startGame()">Spiel starten</button>
+  </div>
+
+  <!-- ============ SCREEN 2: BRETT ============ -->
+  <div id="viewGame" class="hidden">
+    <div class="status-bar">
+      <div>
+        <div class="turn-tag you" id="turnTag">Du bist am Zug</div>
+        <div class="turn-hint" id="turnHint">Figur antippen</div>
+      </div>
+      <div class="side-counts">
+        <span><i class="dot you"></i><b id="cntYou">5</b></span>
+        <span><i class="dot bot"></i><b id="cntBot">5</b></span>
+      </div>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="panel" id="panel">
+      <div class="panel-empty" id="panelEmpty">Keine Figur ausgewählt.</div>
+      <div id="panelSel" class="hidden">
+        <div class="sel-head">
+          <span class="sel-icon" id="selIcon">🧑‍🌾</span>
+          <div>
+            <div class="sel-name" id="selName">Dorfbewohner</div>
+            <div class="sel-move" id="selMove"></div>
+          </div>
+        </div>
+        <button class="ability-btn" id="abilityBtn" onclick="onAbilityBtn()">Fähigkeit</button>
+        <p class="ability-desc" id="abilityDesc"></p>
+      </div>
+    </div>
+
+    <div class="log" id="log"></div>
+
+    <div class="bottom-bar">
+      <button class="ghost-btn" onclick="toggleRules()">Regeln</button>
+      <button class="ghost-btn" onclick="backToPick()">Neues Spiel</button>
+    </div>
+
+    <div class="rules hidden" id="rulesBox">
+      <h3>Regeln</h3>
+      <ul>
+        <li>10×10 Brett. Du startest unten, der Bot oben. Pro Runde eine Aktion: ziehen <em>oder</em> Fähigkeit.</li>
+        <li><b>Dorfbewohner &amp; Mafia:</b> 1 Feld vorwärts oder 2 Felder nach links/rechts (Sprung, überspringt Figuren).</li>
+        <li><b>Ninja:</b> 1 oder 2 Felder vorwärts oder rückwärts in seiner Spalte. Der 2er-Zug braucht ein freies Feld dazwischen.</li>
+        <li>Ziehst du auf ein Feld mit einer gegnerischen Figur, schlägst du sie.</li>
+        <li>Jede Figur hat ihre Fähigkeit <b>einmal pro Spiel</b> (⚡ = noch verfügbar).</li>
+        <li><b>Sieg:</b> alle gegnerischen Figuren schlagen – oder mit einer Figur die gegnerische Grundreihe erreichen.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ENDBILDSCHIRM ============ -->
+<div class="overlay hidden" id="overlay">
+  <div class="overlay-card">
+    <div class="overlay-emoji" id="ovEmoji">🏆</div>
+    <div class="overlay-title win" id="ovTitle">Gewonnen</div>
+    <p class="overlay-text" id="ovText"></p>
+    <button class="start-btn" onclick="backToPick()">Nochmal</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   RUMBLE – 10x10 Taktik-Brettspiel gegen einen Bot
+   ============================================================ */
+
+const N = 10;
+
+const TYPES = {
+  dorf: {
+    key: "dorf", name: "Dorfbewohner", icon: "🧑‍🌾", role: "Der Fleißige", value: 10,
+    move: "1 Feld vorwärts · 2 Felder nach links oder rechts (Sprung)",
+    ability: "Doppelzug",
+    abilityDesc: "Diese Runde 2 Züge statt 1. Der zweite Zug ist mit jeder deiner Figuren möglich.",
+    reach: [[-1,0],[0,-2],[0,2]]
+  },
+  ninja: {
+    key: "ninja", name: "Ninja", icon: "🥷", role: "Der Schatten", value: 14,
+    move: "1 oder 2 Felder vorwärts oder rückwärts (gleiche Spalte)",
+    ability: "Instant Kill",
+    abilityDesc: "Tötet sofort eine gegnerische Figur im Umkreis von 2 Feldern – ohne sich zu bewegen.",
+    reach: [[-1,0],[-2,0],[1,0],[2,0]]
+  },
+  mafia: {
+    key: "mafia", name: "Mafia", icon: "🕴️", role: "Die Familie", value: 12,
+    move: "1 Feld vorwärts · 2 Felder nach links oder rechts (Sprung)",
+    ability: "Einschüchtern",
+    abilityDesc: "Macht eine beliebige gegnerische Figur für eine Runde handlungsunfähig.",
+    reach: [[-1,0],[0,-2],[0,2]]
+  }
+};
+
+const ORDER = ["dorf", "ninja", "mafia"];
+const SPAWN_COLS = [1, 3, 5, 7, 9];
+
+/* ---------- Spielzustand ---------- */
+let pieces = [];
+let pickedType = null;
+let botType = null;
+let turn = "you";          // "you" | "bot"
+let movesLeft = 1;
+let selectedId = null;
+let mode = "move";         // "move" | "kill" | "stun"
+let gameOver = false;
+let roundNum = 1;
+let logLines = [];
+let nextId = 1;
+
+/* ============================================================
+   Charakterauswahl
+   ============================================================ */
+function buildCharList() {
+  const wrap = document.getElementById("charList");
+  wrap.innerHTML = "";
+  ORDER.forEach(k => {
+    const t = TYPES[k];
+    const card = document.createElement("button");
+    card.className = "char-card" + (pickedType === k ? " active" : "");
+    card.onclick = () => { pickedType = k; buildCharList(); document.getElementById("startBtn").disabled = false; };
+    card.innerHTML = `
+      <div class="char-top">
+        <div class="char-icon">${t.icon}</div>
+        <div>
+          <div class="char-name">${t.name}</div>
+          <div class="char-role">${t.role}</div>
+        </div>
+      </div>
+      <div class="char-body">
+        ${miniGrid(t.reach)}
+        <div class="char-info">
+          <div class="info-row">
+            <span class="info-label">Bewegung</span>
+            <span class="info-text">${t.move}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Fähigkeit</span>
+            <span class="info-text"><span class="ability-name">${t.ability}</span> – ${t.abilityDesc}</span>
+          </div>
+        </div>
+      </div>`;
+    wrap.appendChild(card);
+  });
+}
+
+function miniGrid(reach) {
+  let html = '<div class="mini-grid">';
+  for (let r = -2; r <= 2; r++) {
+    for (let c = -2; c <= 2; c++) {
+      let cls = "mini-cell";
+      if (r === 0 && c === 0) cls += " self";
+      else if (reach.some(([dr, dc]) => dr === r && dc === c)) cls += " reach";
+      html += `<div class="${cls}"></div>`;
+    }
+  }
+  return html + "</div>";
+}
+
+/* ============================================================
+   Spielstart / Aufstellung
+   ============================================================ */
+function teamComposition(main) {
+  const others = ORDER.filter(k => k !== main);
+  // Muster über die 5 Spawn-Spalten: Haupt, Anderer A, Haupt, Anderer B, Haupt
+  return [main, others[0], main, others[1], main];
+}
+
+function startGame() {
+  if (!pickedType) return;
+  botType = ORDER[Math.floor(Math.random() * ORDER.length)];
+
+  pieces = [];
+  nextId = 1;
+  const mine = teamComposition(pickedType);
+  const theirs = teamComposition(botType);
+  SPAWN_COLS.forEach((col, i) => {
+    pieces.push(newPiece(mine[i], "you", N - 1, col));
+    pieces.push(newPiece(theirs[i], "bot", 0, col));
+  });
+
+  turn = "you";
+  movesLeft = 1;
+  selectedId = null;
+  mode = "move";
+  gameOver = false;
+  roundNum = 1;
+  logLines = [];
+
+  document.getElementById("viewPick").classList.add("hidden");
+  document.getElementById("viewGame").classList.remove("hidden");
+  document.getElementById("roundBox").classList.remove("hidden");
+  document.getElementById("overlay").classList.add("hidden");
+  document.getElementById("rulesBox").classList.add("hidden");
+
+  log(`Gegner spielt <b>${TYPES[botType].name}</b>. Du spielst <b>${TYPES[pickedType].name}</b>.`, "");
+  render();
+}
+
+function newPiece(type, side, r, c) {
+  return { id: nextId++, type, side, r, c, abilityUsed: false, disabled: 0 };
+}
+
+function backToPick() {
+  document.getElementById("overlay").classList.add("hidden");
+  document.getElementById("viewGame").classList.add("hidden");
+  document.getElementById("roundBox").classList.add("hidden");
+  document.getElementById("viewPick").classList.remove("hidden");
+  buildCharList();
+}
+
+/* ============================================================
+   Regeln / Züge
+   ============================================================ */
+function pieceAt(r, c) { return pieces.find(p => p.r === r && p.c === c) || null; }
+function byId(id) { return pieces.find(p => p.id === id) || null; }
+function inBoard(r, c) { return r >= 0 && r < N && c >= 0 && c < N; }
+function forwardDir(side) { return side === "you" ? -1 : 1; }
+function homeRow(side) { return side === "you" ? N - 1 : 0; }
+function enemyHomeRow(side) { return side === "you" ? 0 : N - 1; }
+function alive(side) { return pieces.filter(p => p.side === side); }
+
+function legalMoves(p) {
+  if (!p || p.disabled > 0) return [];
+  const dir = forwardDir(p.side);
+  const out = [];
+  const push = (r, c) => {
+    if (!inBoard(r, c)) return;
+    const o = pieceAt(r, c);
+    if (o && o.side === p.side) return;
+    out.push({ r, c, capture: !!o });
+  };
+
+  if (p.type === "ninja") {
+    for (const d of [dir, -dir]) {
+      // 1 Feld
+      push(p.r + d, p.c);
+      // 2 Felder – nur wenn das Zwischenfeld frei ist
+      if (inBoard(p.r + d, p.c) && !pieceAt(p.r + d, p.c)) push(p.r + 2 * d, p.c);
+    }
+  } else {
+    push(p.r + dir, p.c);        // 1 vorwärts
+    push(p.r, p.c - 2);          // 2 links (Sprung)
+    push(p.r, p.c + 2);          // 2 rechts (Sprung)
+  }
+  return out;
+}
+
+function killTargets(p) {
+  // Ninja: Gegner im Umkreis von 2 Feldern (Chebyshev)
+  return pieces.filter(o => o.side !== p.side &&
+    Math.max(Math.abs(o.r - p.r), Math.abs(o.c - p.c)) <= 2);
+}
+
+function stunTargets(p) {
+  // Mafia: jede gegnerische Figur, die nicht schon betäubt ist
+  return pieces.filter(o => o.side !== p.side && o.disabled === 0);
+}
+
+function abilityAvailable(p) {
+  if (!p || p.abilityUsed || p.disabled > 0) return false;
+  if (p.type === "ninja") return killTargets(p).length > 0;
+  if (p.type === "mafia") return stunTargets(p).length > 0;
+  if (p.type === "dorf") return movesLeft === 1;   // kein doppelter Doppelzug
+  return false;
+}
+
+/* ============================================================
+   Spielerinteraktion
+   ============================================================ */
+function onCellClick(r, c) {
+  if (gameOver || turn !== "you") return;
+  const target = pieceAt(r, c);
+  const sel = byId(selectedId);
+
+  // Fähigkeit im Zielmodus
+  if (sel && mode === "kill") {
+    if (target && killTargets(sel).some(t => t.id === target.id)) return doKill(sel, target);
+    return;
+  }
+  if (sel && mode === "stun") {
+    if (target && stunTargets(sel).some(t => t.id === target.id)) return doStun(sel, target);
+    return;
+  }
+
+  // Eigene Figur auswählen
+  if (target && target.side === "you") {
+    selectedId = (selectedId === target.id) ? null : target.id;
+    mode = "move";
+    render();
+    return;
+  }
+
+  // Zug ausführen
+  if (sel && legalMoves(sel).some(m => m.r === r && m.c === c)) {
+    doMove(sel, r, c);
+    return;
+  }
+
+  selectedId = null;
+  mode = "move";
+  render();
+}
+
+function doMove(p, r, c) {
+  const victim = pieceAt(r, c);
+  if (victim) {
+    pieces = pieces.filter(x => x.id !== victim.id);
+    log(`${sideWord(p.side)} ${TYPES[p.type].name} schlägt ${TYPES[victim.type].name}.`, p.side);
+  }
+  p.r = r; p.c = c;
+  selectedId = null;
+  mode = "move";
+  afterAction(p.side);
+}
+
+function doKill(p, target) {
+  p.abilityUsed = true;
+  pieces = pieces.filter(x => x.id !== target.id);
+  log(`${sideWord(p.side)} Ninja: <b>Instant Kill</b> auf ${TYPES[target.type].name}. 🗡️`, p.side);
+  selectedId = null;
+  mode = "move";
+  afterAction(p.side);
+}
+
+function doStun(p, target) {
+  p.abilityUsed = true;
+  target.disabled = 1;
+  log(`${sideWord(p.side)} Mafia schüchtert ${TYPES[target.type].name} ein – eine Runde handlungsunfähig. 🤐`, p.side);
+  selectedId = null;
+  mode = "move";
+  afterAction(p.side);
+}
+
+function doDouble(p) {
+  p.abilityUsed = true;
+  movesLeft = 2;
+  log(`${sideWord(p.side)} Dorfbewohner nutzt <b>Doppelzug</b> – 2 Züge diese Runde. ⚡`, p.side);
+  render();
+}
+
+function onAbilityBtn() {
+  const p = byId(selectedId);
+  if (!p || turn !== "you" || gameOver) return;
+
+  if (mode !== "move") { mode = "move"; render(); return; }   // abbrechen
+  if (!abilityAvailable(p)) return;
+
+  if (p.type === "dorf") { doDouble(p); return; }
+  mode = (p.type === "ninja") ? "kill" : "stun";
+  render();
+}
+
+/* ============================================================
+   Rundenablauf
+   ============================================================ */
+function afterAction(side, endsTurn = false) {
+  if (checkEnd()) { render(); return; }
+
+  // Doppelzug: die Seite bleibt am Zug, solange sie noch handeln kann
+  if (!endsTurn && movesLeft > 1 && hasAnyAction(side)) {
+    movesLeft--;
+    render();
+    if (side === "bot") setTimeout(botAct, 420);
+    return;
+  }
+
+  // Betäubung der ziehenden Seite läuft am Ende ihrer Runde ab
+  pieces.filter(p => p.side === side && p.disabled > 0).forEach(p => p.disabled--);
+
+  movesLeft = 1;
+  selectedId = null;
+  mode = "move";
+
+  if (side === "you") {
+    turn = "bot";
+    render();
+    setTimeout(botTurn, 520);
+  } else {
+    turn = "you";
+    roundNum++;
+    render();
+    // Falls der Spieler komplett blockiert ist: passen
+    if (!hasAnyAction("you")) {
+      log("Du kannst nicht handeln – Runde wird übersprungen.", "you");
+      setTimeout(() => afterAction("you", true), 700);
+    }
+  }
+}
+
+function hasAnyAction(side) {
+  return alive(side).some(p => p.disabled === 0 && (legalMoves(p).length > 0 || abilityAvailable(p)));
+}
+
+function checkEnd() {
+  if (gameOver) return true;
+  if (alive("bot").length === 0) return endGame(true, "Alle gegnerischen Figuren ausgeschaltet.");
+  if (alive("you").length === 0) return endGame(false, "Dein Team wurde ausgelöscht.");
+  if (pieces.some(p => p.side === "you" && p.r === enemyHomeRow("you")))
+    return endGame(true, "Durchbruch! Du hast die gegnerische Grundreihe erreicht.");
+  if (pieces.some(p => p.side === "bot" && p.r === enemyHomeRow("bot")))
+    return endGame(false, "Der Gegner hat deine Grundreihe erreicht.");
+  return false;
+}
+
+function endGame(win, text) {
+  gameOver = true;
+  document.getElementById("ovEmoji").textContent = win ? "🏆" : "💀";
+  const t = document.getElementById("ovTitle");
+  t.textContent = win ? "Gewonnen 😎🤌" : "Verloren";
+  t.className = "overlay-title " + (win ? "win" : "lose");
+  document.getElementById("ovText").textContent = text;
+  document.getElementById("overlay").classList.remove("hidden");
+  log(win ? `<b>Sieg!</b> ${text}` : `<b>Niederlage.</b> ${text}`, "");
+  return true;
+}
+
+/* ============================================================
+   Bot
+   ============================================================ */
+function botTurn() { botAct(); }
+
+function botAct() {
+  if (gameOver || turn !== "bot") return;
+
+  if (!hasAnyAction("bot")) {
+    log("Der Gegner kann nicht handeln.", "bot");
+    afterAction("bot", true);
+    return;
+  }
+
+  const units = alive("bot").filter(p => p.disabled === 0);
+
+  // 1) Ninja – Instant Kill
+  const ninjas = units.filter(p => p.type === "ninja" && !p.abilityUsed && killTargets(p).length);
+  if (ninjas.length) {
+    const n = ninjas[0];
+    const targets = killTargets(n).sort((a, b) => scoreTarget(b) - scoreTarget(a));
+    const best = targets[0];
+    if (TYPES[best.type].value >= 12 || best.r <= 3 || Math.random() < 0.35) {
+      doKill(n, best);
+      return;
+    }
+  }
+
+  // 2) Mafia – Einschüchtern (bevorzugt weit vorgedrungene Spielerfiguren)
+  const mafias = units.filter(p => p.type === "mafia" && !p.abilityUsed && stunTargets(p).length);
+  if (mafias.length) {
+    const m = mafias[0];
+    const targets = stunTargets(m).sort((a, b) => a.r - b.r); // je kleiner r, desto tiefer im Botgebiet
+    const best = targets[0];
+    if (best.r <= 3 || Math.random() < 0.18) {
+      doStun(m, best);
+      return;
+    }
+  }
+
+  // 3) Dorfbewohner – Doppelzug, wenn es etwas zu schlagen gibt
+  const dorfs = units.filter(p => p.type === "dorf" && !p.abilityUsed);
+  if (dorfs.length && movesLeft === 1) {
+    const captureAvailable = units.some(p => legalMoves(p).some(m => m.capture));
+    if (captureAvailable && Math.random() < 0.7) {
+      doDouble(dorfs[0]);
+      setTimeout(botMove, 420);
+      return;
+    }
+  }
+
+  botMove();
+}
+
+function scoreTarget(p) {
+  // Wert + Bedrohung (je näher an der Botgrundreihe, desto gefährlicher)
+  return TYPES[p.type].value + (N - 1 - p.r);
+}
+
+function botMove() {
+  if (gameOver || turn !== "bot") return;
+
+  const options = [];
+  alive("bot").filter(p => p.disabled === 0).forEach(p => {
+    legalMoves(p).forEach(m => options.push({ p, m, score: scoreMove(p, m) }));
+  });
+
+  if (!options.length) { afterAction("bot", true); return; }
+
+  options.sort((a, b) => b.score - a.score);
+  const top = options.filter(o => o.score >= options[0].score - 2);
+  const pick = top[Math.floor(Math.random() * top.length)];
+
+  // Ein weiterer Zug (Doppelzug) wird von afterAction() eingeplant.
+  doMove(pick.p, pick.m.r, pick.m.c);
+}
+
+function scoreMove(p, m) {
+  let s = 0;
+  const victim = pieceAt(m.r, m.c);
+  if (victim) s += 40 + TYPES[victim.type].value;
+
+  // Vorwärtsdrang Richtung Spielergrundreihe (r = 9)
+  s += (m.r - p.r) * 3;
+  if (m.r === N - 1) s += 200;                     // Durchbruch = Sieg
+  s += (4 - Math.abs(m.c - 4.5)) * 0.4;            // leichte Zentrumsneigung
+
+  // Gefahr auf dem Zielfeld
+  if (isAttackedBy(m.r, m.c, "you", p)) s -= 18 + TYPES[p.type].value * 0.6;
+
+  // Ninjas mit ungenutztem Instant Kill lieber in Reichweite bringen
+  if (p.type === "ninja" && !p.abilityUsed) {
+    const near = pieces.some(o => o.side === "you" &&
+      Math.max(Math.abs(o.r - m.r), Math.abs(o.c - m.c)) <= 2);
+    if (near) s += 8;
+  }
+
+  return s + Math.random() * 2;
+}
+
+function isAttackedBy(r, c, side, ignorePiece) {
+  return pieces.some(o => {
+    if (o.side !== side || o.disabled > 0 || o === ignorePiece) return false;
+    const dir = forwardDir(o.side);
+    if (o.type === "ninja") {
+      if (o.c !== c) return false;
+      const d = r - o.r;
+      if (Math.abs(d) === 1) return true;
+      if (Math.abs(d) === 2) return !pieceAt(o.r + d / 2, o.c);
+      return false;
+    }
+    if (o.r + dir === r && o.c === c) return true;
+    if (o.r === r && Math.abs(o.c - c) === 2) return true;
+    return false;
+  });
+}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+function render() {
+  const board = document.getElementById("board");
+  const sel = byId(selectedId);
+  const moves = (turn === "you" && sel && mode === "move" && !gameOver) ? legalMoves(sel) : [];
+  const kills = (turn === "you" && sel && mode === "kill" && !gameOver) ? killTargets(sel) : [];
+  const stuns = (turn === "you" && sel && mode === "stun" && !gameOver) ? stunTargets(sel) : [];
+
+  board.innerHTML = "";
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const cell = document.createElement("div");
+      cell.className = "cell " + ((r + c) % 2 === 0 ? "light" : "dark");
+      const p = pieceAt(r, c);
+      const mv = moves.find(m => m.r === r && m.c === c);
+      const isKill = kills.some(t => t.r === r && t.c === c);
+      const isStun = stuns.some(t => t.r === r && t.c === c);
+
+      if (p) {
+        const el = document.createElement("div");
+        el.className = "piece " + (p.side === "you" ? "you" : "bot")
+          + (p.id === selectedId ? " selected" : "")
+          + (p.disabled > 0 ? " disabled" : "")
+          + (turn === "you" && p.side === "you" && !gameOver ? " actable" : "");
+        el.textContent = TYPES[p.type].icon;
+
+        if (p.disabled > 0) el.innerHTML += '<span class="badge">💤</span>';
+        else if (!p.abilityUsed) el.innerHTML += '<span class="badge">⚡</span>';
+
+        cell.appendChild(el);
+      }
+
+      if (mv && !p) {
+        const dot = document.createElement("span");
+        dot.className = "marker";
+        cell.appendChild(dot);
+      }
+      if ((mv && p) || isKill || isStun) {
+        const ring = document.createElement("span");
+        ring.className = "ring" + (isKill ? " kill" : isStun ? " stun" : "");
+        cell.appendChild(ring);
+      }
+
+      if (mv || isKill || isStun || (p && p.side === "you" && turn === "you")) cell.classList.add("movable");
+      cell.onclick = () => onCellClick(r, c);
+      board.appendChild(cell);
+    }
+  }
+
+  // Statuszeile
+  document.getElementById("roundNum").textContent = roundNum;
+  document.getElementById("cntYou").textContent = alive("you").length;
+  document.getElementById("cntBot").textContent = alive("bot").length;
+
+  const tag = document.getElementById("turnTag");
+  const hint = document.getElementById("turnHint");
+  if (gameOver) {
+    tag.className = "turn-tag";
+    tag.textContent = "Spiel beendet";
+    hint.textContent = "Neues Spiel starten";
+  } else if (turn === "you") {
+    tag.className = "turn-tag you";
+    tag.textContent = movesLeft > 1 ? `Du bist am Zug (${movesLeft} Züge)` : "Du bist am Zug";
+    hint.textContent = mode === "kill" ? "Ziel für Instant Kill wählen"
+      : mode === "stun" ? "Ziel zum Einschüchtern wählen"
+      : "Figur antippen, dann Zielfeld";
+  } else {
+    tag.className = "turn-tag bot";
+    tag.textContent = "Gegner am Zug";
+    hint.textContent = "…";
+  }
+
+  renderPanel(sel);
+  renderLog();
+}
+
+function renderPanel(sel) {
+  const empty = document.getElementById("panelEmpty");
+  const box = document.getElementById("panelSel");
+  if (!sel) {
+    empty.classList.remove("hidden");
+    box.classList.add("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+  box.classList.remove("hidden");
+
+  const t = TYPES[sel.type];
+  document.getElementById("selIcon").textContent = t.icon;
+  document.getElementById("selName").textContent = t.name;
+  document.getElementById("selMove").textContent = t.move;
+
+  const btn = document.getElementById("abilityBtn");
+  const desc = document.getElementById("abilityDesc");
+  desc.textContent = t.abilityDesc;
+
+  if (mode !== "move") {
+    btn.className = "ability-btn cancel";
+    btn.disabled = false;
+    btn.textContent = "✕ Abbrechen";
+  } else {
+    btn.className = "ability-btn";
+    const ok = abilityAvailable(sel) && turn === "you" && !gameOver;
+    btn.disabled = !ok;
+    btn.textContent = sel.abilityUsed ? `${t.ability} – verbraucht` : `⚡ ${t.ability}`;
+    if (!sel.abilityUsed && !ok && sel.type === "ninja") btn.textContent = `${t.ability} – kein Ziel in Reichweite`;
+    if (!sel.abilityUsed && !ok && sel.type === "dorf" && movesLeft > 1) btn.textContent = `${t.ability} – bereits aktiv`;
+  }
+}
+
+function sideWord(side) { return side === "you" ? "Dein" : "Gegnerischer"; }
+
+function log(html, side) {
+  logLines.unshift({ html, side });
+  if (logLines.length > 30) logLines.pop();
+}
+
+function renderLog() {
+  document.getElementById("log").innerHTML = logLines
+    .map(l => `<div class="log-line ${l.side}">${l.html}</div>`).join("");
+}
+
+function toggleRules() {
+  document.getElementById("rulesBox").classList.toggle("hidden");
+}
+
+/* ---------- Init ---------- */
+buildCharList();
+</script>
+</body>
+</html>
