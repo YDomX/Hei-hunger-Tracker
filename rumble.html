@@ -187,6 +187,14 @@
   .piece.disabled { opacity: 0.4; filter: grayscale(1); }
   .piece.actable { cursor: pointer; }
 
+  /* Verbleibende Figur, die während des Zuschlagens ausgeblendet wird */
+  .ghost {
+    position: absolute;
+    left: 8%; top: 8%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
   .badge {
     position: absolute;
     top: -3px; right: -3px;
@@ -437,6 +445,10 @@ let roundNum = 1;
 let logLines = [];
 let nextId = 1;
 
+// Werden beim Zug gesetzt und nach dem nächsten render() abgespielt
+let pendingAnim = null;
+let pendingCapture = null;
+
 /* ============================================================
    Charakterauswahl
    ============================================================ */
@@ -633,7 +645,10 @@ function onCellClick(r, c) {
 
 function doMove(p, r, c) {
   const victim = pieceAt(r, c);
+  pendingAnim = { id: p.id, fromR: p.r, fromC: p.c, toR: r, toC: c };
   if (victim) {
+    // Geschlagene Figur bleibt sichtbar, bis der Angreifer angekommen ist
+    pendingCapture = { r, c, type: victim.type, side: victim.side };
     pieces = pieces.filter(x => x.id !== victim.id);
     log(`${sideWord(p.side)} ${TYPES[p.type].name} schlägt ${TYPES[victim.type].name}.`, p.side);
   }
@@ -645,6 +660,7 @@ function doMove(p, r, c) {
 
 function doKill(p, target) {
   p.abilityUsed = true;
+  pendingCapture = { r: target.r, c: target.c, type: target.type, side: target.side };
   pieces = pieces.filter(x => x.id !== target.id);
   log(`${sideWord(p.side)} Ninja: <b>Instant Kill</b> auf ${TYPES[target.type].name}. 🗡️`, p.side);
   selectedId = null;
@@ -887,6 +903,7 @@ function render() {
           + (p.id === selectedId ? " selected" : "")
           + (p.disabled > 0 ? " disabled" : "")
           + (turn === "you" && p.side === "you" && !gameOver ? " actable" : "");
+        el.dataset.pid = p.id;
         el.textContent = TYPES[p.type].icon;
 
         if (p.disabled > 0) el.innerHTML += '<span class="badge">💤</span>';
@@ -937,6 +954,80 @@ function render() {
 
   renderPanel(sel);
   renderLog();
+  flushAnimations();
+}
+
+/* ---------- Bewegungsanimation ----------
+   Das Brett wird bei jeder Aktion komplett neu gezeichnet. Deshalb wird die
+   Figur erst an ihr Zielfeld gesetzt und anschließend per Transform an die
+   alte Position zurückversetzt und von dort herüberbewegt (FLIP).            */
+function flushAnimations() {
+  const anim = pendingAnim, cap = pendingCapture;
+  pendingAnim = null;
+  pendingCapture = null;
+  const travel = anim ? runMoveAnim(anim) : 0;
+  if (cap) fadeCaptured(cap, travel);
+}
+
+function reducedMotion() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+function runMoveAnim(a) {
+  const el = document.querySelector('.piece[data-pid="' + a.id + '"]');
+  if (!el || !el.animate || reducedMotion()) return 0;
+
+  const cell = el.parentElement;
+  const size = cell.getBoundingClientRect().width;
+  if (!size) return 0;
+
+  const dx = (a.fromC - a.toC) * size;
+  const dy = (a.fromR - a.toR) * size;
+  if (!dx && !dy) return 0;
+
+  const leap = a.fromR === a.toR;   // seitlicher 2-Felder-Sprung
+  const cells = Math.max(Math.abs(a.fromR - a.toR), Math.abs(a.fromC - a.toC));
+  const dur = leap ? 330 : 150 + cells * 110;
+  const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+  const frames = [];
+  const steps = 16;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, e = ease(t);
+    const x = dx * (1 - e);
+    let y = dy * (1 - e);
+    let scale = 1;
+    if (leap) {
+      y -= Math.sin(t * Math.PI) * size * 0.6;                        // Bogen über das Feld
+      scale = 1 + Math.sin(t * Math.PI) * 0.12;
+    } else {
+      y -= Math.abs(Math.sin(t * Math.PI * cells)) * size * 0.18;     // kleine Laufschritte
+    }
+    frames.push({ transform: `translate(${x}px, ${y}px) scale(${scale})`, offset: t });
+  }
+
+  cell.style.zIndex = "5";      // über den Nachbarfeldern
+  el.style.zIndex = "2";        // über einer geschlagenen Figur im Zielfeld
+  const player = el.animate(frames, { duration: dur, easing: "linear" });
+  player.onfinish = player.oncancel = () => { cell.style.zIndex = ""; el.style.zIndex = ""; };
+  return dur;
+}
+
+function fadeCaptured(cap, delay) {
+  const cell = document.getElementById("board").children[cap.r * N + cap.c];
+  if (!cell) return;
+
+  const ghost = document.createElement("div");
+  ghost.className = "piece ghost " + (cap.side === "you" ? "you" : "bot");
+  ghost.textContent = TYPES[cap.type].icon;
+  cell.appendChild(ghost);
+
+  if (!ghost.animate || reducedMotion()) { ghost.remove(); return; }
+  const player = ghost.animate(
+    [{ opacity: 1, transform: "scale(1)" },
+     { opacity: 0, transform: "scale(0.5) rotate(14deg)" }],
+    { duration: 260, delay: Math.max(0, delay - 70), easing: "ease-in", fill: "backwards" });
+  player.onfinish = player.oncancel = () => ghost.remove();
 }
 
 function renderPanel(sel) {
