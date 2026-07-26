@@ -491,6 +491,7 @@
         <li>Ziehst du auf ein Feld mit einer gegnerischen Figur, schlägst du sie.</li>
         <li>Jede Figur hat ihre Fähigkeit <b>einmal pro Spiel</b> (⚡ = noch verfügbar).</li>
         <li><b>Sieg:</b> alle gegnerischen Figuren schlagen – oder mit einer Figur die gegnerische Grundreihe erreichen.</li>
+        <li><b>Remis:</b> dreimal dieselbe Stellung, oder 40 Züge ohne Schlagen und ohne Bauernzug.</li>
       </ul>
     </div>
   </div>
@@ -577,6 +578,11 @@ let diffs = { you: "schwer", bot: "mittel" };   // Stufe je Seite
 let pickPhase = 1;           // im Zwei-Spieler-Modus wählen beide nacheinander
 let picks = { you: null, bot: null };
 let skipStreak = 0;
+
+// Remis-Erkennung: Häufigkeit jeder Stellung, Züge seit dem letzten Fortschritt
+const NO_PROGRESS_LIMIT = 40;   // Halbzüge ohne Schlagen und ohne Bauernzug
+let posCounts = new Map();
+let sinceProgress = 0;
 let turn = "you";          // "you" | "bot"
 let movesLeft = 1;
 let selectedId = null;
@@ -753,6 +759,8 @@ function startGame() {
   roundNum = 1;
   logLines = [];
   skipStreak = 0;
+  posCounts = new Map();
+  sinceProgress = 0;
 
   document.getElementById("viewPick").classList.add("hidden");
   document.getElementById("viewGame").classList.remove("hidden");
@@ -899,6 +907,8 @@ function onCellClick(r, c) {
 function doMove(p, r, c) {
   const victim = pieceAt(r, c);
   skipStreak = 0;
+  // Nur Schlagen und Bauernzüge sind unumkehrbar – alles andere ist Manövrieren
+  if (victim || p.type === "bauer") sinceProgress = 0; else sinceProgress++;
   pendingAnim = { id: p.id, fromR: p.r, fromC: p.c, toR: r, toC: c };
   if (victim) {
     // Geschlagene Figur bleibt sichtbar, bis der Angreifer angekommen ist
@@ -915,6 +925,7 @@ function doMove(p, r, c) {
 function doKill(p, target) {
   p.abilityUsed = true;
   skipStreak = 0;
+  sinceProgress = 0;
   pendingCapture = { r: target.r, c: target.c, type: target.type, side: target.side };
   announceAbility(p, target);
   log(`<b>🗡️ Instant Kill</b> – ${nameOf(p)} ➜ ${nameOf(target)}`, p.side);
@@ -927,6 +938,7 @@ function doKill(p, target) {
 function doStun(p, target) {
   p.abilityUsed = true;
   skipStreak = 0;
+  sinceProgress++;
   target.disabled = 1;
   announceAbility(p, target);
   log(`<b>🤐 Einschüchtern</b> – ${nameOf(p)} ➜ ${nameOf(target)}, eine Runde handlungsunfähig`, p.side);
@@ -979,6 +991,25 @@ function afterAction(side, endsTurn = false) {
   const next = side === "you" ? "bot" : "you";
   turn = next;
   if (next === "you") roundNum++;
+
+  // Endlosschleifen abfangen: dreimal dieselbe Stellung oder zu lange ohne Fortschritt
+  const key = positionKey(next);
+  const gesehen = (posCounts.get(key) || 0) + 1;
+  posCounts.set(key, gesehen);
+  if (gesehen >= 3) {
+    endGame(null, "Dieselbe Stellung zum dritten Mal – die Partie dreht sich im Kreis.");
+    render();
+    return;
+  }
+  if (sinceProgress >= NO_PROGRESS_LIMIT) {
+    endGame(null, `${NO_PROGRESS_LIMIT} Züge ohne Schlagen und ohne Bauernzug.`);
+    render();
+    return;
+  }
+  if (sinceProgress === NO_PROGRESS_LIMIT - 10) {
+    log(`Seit ${sinceProgress} Zügen kein Schlagen und kein Bauernzug – in 10 Zügen endet die Partie remis.`, "");
+  }
+
   render();
 
   if (!isHuman(next)) { setTimeout(() => botAct(next), 520); return; }
@@ -989,6 +1020,23 @@ function afterAction(side, endsTurn = false) {
     log(`${sideLabel(next)} kann nicht handeln – Runde wird übersprungen.`, next);
     setTimeout(() => afterAction(next, true), 700);
   }
+}
+
+/* Kennung der Stellung, inklusive Zugrecht, Fähigkeits- und Betäubungszustand.
+   Zwei Stellungen mit derselben Kennung sind für den weiteren Verlauf gleich –
+   taucht eine dreimal auf, kommt die Partie nicht mehr voran.               */
+const CODE = { bauer: "b", dorf: "d", ninja: "n", mafia: "m" };
+
+function positionKey(sideToMove) {
+  const feld = new Array(N * N).fill(".");
+  for (const p of pieces) {
+    let ch = CODE[p.type];
+    if (p.side === "bot") ch = ch.toUpperCase();
+    if (TYPES[p.type].ability && !p.abilityUsed) ch += "*";
+    if (p.disabled > 0) ch += "~";
+    feld[p.r * N + p.c] = ch;
+  }
+  return feld.join("") + "|" + sideToMove;
 }
 
 function hasAnyAction(side) {
@@ -1255,7 +1303,18 @@ function chooseBotAction(lvl, side = "bot") {
     let besteJetzt = null, bestScore = -Infinity;
     for (const a of acts) {
       const u = applyAction(a);
-      let s = search(tiefe - 1, -Infinity, Infinity, gegenseite(side), 1, side);
+      /* Führt der Zug in eine schon dagewesene Stellung? Beim dritten Mal endet
+         die Partie remis – das ist mit 0 bewertet, weil die Bewertung die
+         Differenz beider Seiten ist. Wer vorn liegt, meidet das dadurch von
+         selbst; wer hinten liegt, darf es anstreben.                        */
+      const gesehen = posCounts.get(positionKey(gegenseite(side))) || 0;
+      let s;
+      if (gesehen >= 2) {
+        s = 0;
+      } else {
+        s = search(tiefe - 1, -Infinity, Infinity, gegenseite(side), 1, side);
+        if (gesehen === 1) s -= 25;      // schon einmal dagewesen: lieber etwas anderes
+      }
       undoAction(u);
       if (lvl.noise) s += (Math.random() - 0.5) * lvl.noise;
       if (s > bestScore) { bestScore = s; besteJetzt = a; }
