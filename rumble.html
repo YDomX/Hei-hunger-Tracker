@@ -420,8 +420,12 @@
         <div class="chips" id="oppChips"></div>
       </div>
       <div class="setup-row" id="diffRow">
-        <span class="setup-label">Schwierigkeit</span>
+        <span class="setup-label" id="diffLabel">Schwierigkeit</span>
         <div class="chips" id="diffChips"></div>
+      </div>
+      <div class="setup-row hidden" id="diffRow2">
+        <span class="setup-label">Bot 2 – oben</span>
+        <div class="chips" id="diffChips2"></div>
       </div>
       <p class="setup-hint" id="setupHint"></p>
     </div>
@@ -567,8 +571,9 @@ const LEVEL_ORDER = ["leicht", "mittel", "schwer", "ultra", "god"];
 /* ---------- Spielzustand ---------- */
 let pieces = [];
 let pickedType = null;
-let opponent = "bot";        // "bot" = gegen den Computer, "friend" = zwei Spieler
-let difficulty = "mittel";
+// "bot" = Mensch gegen Computer, "friend" = zwei Menschen, "duel" = zwei Bots
+let opponent = "bot";
+let diffs = { you: "schwer", bot: "mittel" };   // Stufe je Seite
 let pickPhase = 1;           // im Zwei-Spieler-Modus wählen beide nacheinander
 let picks = { you: null, bot: null };
 let skipStreak = 0;
@@ -591,7 +596,7 @@ let pendingCapture = null;
 function buildSetup() {
   const opp = document.getElementById("oppChips");
   opp.innerHTML = "";
-  [["bot", "Gegen Bot"], ["friend", "2 Spieler"]].forEach(([key, label]) => {
+  [["bot", "Gegen Bot"], ["friend", "2 Spieler"], ["duel", "Bot gegen Bot"]].forEach(([key, label]) => {
     const b = document.createElement("button");
     b.className = "chip" + (opponent === key ? " active" : "");
     b.textContent = label;
@@ -599,34 +604,51 @@ function buildSetup() {
     opp.appendChild(b);
   });
 
-  const diff = document.getElementById("diffChips");
-  diff.innerHTML = "";
-  LEVEL_ORDER.forEach(key => {
-    const lvl = LEVELS[key];
-    const b = document.createElement("button");
-    b.className = "chip" + (difficulty === key ? " active" : "") + (lvl.hot ? " hot" : "");
-    b.textContent = lvl.name;
-    b.onclick = () => { difficulty = key; renderPickScreen(); };
-    diff.appendChild(b);
-  });
+  const stufenReihe = (elId, seite) => {
+    const box = document.getElementById(elId);
+    box.innerHTML = "";
+    LEVEL_ORDER.forEach(key => {
+      const lvl = LEVELS[key];
+      const b = document.createElement("button");
+      b.className = "chip" + (diffs[seite] === key ? " active" : "") + (lvl.hot ? " hot" : "");
+      b.textContent = lvl.name;
+      b.onclick = () => { diffs[seite] = key; renderPickScreen(); };
+      box.appendChild(b);
+    });
+  };
+  stufenReihe("diffChips", opponent === "duel" ? "you" : "bot");
+  stufenReihe("diffChips2", "bot");
 
-  document.getElementById("setupHint").textContent = opponent === "friend"
-    ? "Ihr spielt abwechselnd auf demselben Gerät: Spieler 1 zieht unten, danach übernimmt Spieler 2 die obere Seite."
-    : LEVELS[difficulty].hint;
+  document.getElementById("diffLabel").textContent =
+    opponent === "duel" ? "Bot 1 – unten" : "Schwierigkeit";
+
+  document.getElementById("setupHint").textContent =
+    opponent === "friend"
+      ? "Ihr spielt abwechselnd auf demselben Gerät: Spieler 1 zieht unten, danach übernimmt Spieler 2 die obere Seite."
+      : opponent === "duel"
+        ? "Beide Seiten spielt der Computer – du schaust zu. Wähle für jeden Bot eine Stufe und danach sein Team."
+        : LEVELS[diffs.bot].hint;
 }
 
 function renderPickScreen() {
-  const zwei = opponent === "friend";
-  document.getElementById("setupBox").classList.toggle("hidden", zwei && pickPhase === 2);
-  document.getElementById("diffRow").classList.toggle("hidden", zwei);
-  document.getElementById("pickIntro").innerHTML = zwei
-    ? `<strong>Spieler ${pickPhase}</strong> wählt: Dein Team besteht aus <strong>3×</strong> deiner Wahl,
+  const zweiSeiten = opponent !== "bot";          // beide Seiten werden gewählt
+  const duell = opponent === "duel";
+  const wer = duell ? `Bot ${pickPhase}` : `Spieler ${pickPhase}`;
+
+  document.getElementById("setupBox").classList.toggle("hidden", zweiSeiten && pickPhase === 2);
+  document.getElementById("diffRow").classList.toggle("hidden", opponent === "friend");
+  document.getElementById("diffRow2").classList.toggle("hidden", !duell);
+
+  document.getElementById("pickIntro").innerHTML = zweiSeiten
+    ? `<strong>${wer}</strong>${duell ? "" : " wählt"}: Team aus <strong>3×</strong> der Wahl,
        je <strong>1×</strong> der beiden anderen und <strong>10 Bauern</strong> in der vorderen Reihe.`
     : `Wähle deinen <strong>Hauptcharakter</strong>. Dein Team besteht aus
        <strong>3×</strong> deiner Wahl, je <strong>1×</strong> der beiden anderen
        und <strong>10 Bauern</strong> in der vorderen Reihe. Der Gegner (Bot) wählt verdeckt.`;
+
   document.getElementById("startBtn").textContent =
-    (zwei && pickPhase === 1) ? "Weiter zu Spieler 2" : "Spiel starten";
+    (zweiSeiten && pickPhase === 1) ? (duell ? "Weiter zu Bot 2" : "Weiter zu Spieler 2")
+    : duell ? "Kampf starten" : "Spiel starten";
   document.getElementById("startBtn").disabled = !pickedType;
   buildSetup();
   buildCharList();
@@ -690,8 +712,8 @@ function teamComposition(main) {
 function onStartBtn() {
   if (!pickedType) return;
 
-  // Im Zwei-Spieler-Modus wählt erst Spieler 1, dann Spieler 2
-  if (opponent === "friend" && pickPhase === 1) {
+  // Bei zwei gewählten Seiten kommt erst die untere, dann die obere dran
+  if (opponent !== "bot" && pickPhase === 1) {
     picks.you = pickedType;
     pickPhase = 2;
     pickedType = null;
@@ -700,7 +722,7 @@ function onStartBtn() {
     return;
   }
 
-  if (opponent === "friend") {
+  if (opponent !== "bot") {
     picks.bot = pickedType;
   } else {
     picks.you = pickedType;
@@ -742,9 +764,15 @@ function startGame() {
   scrollTo(0, 0);
 
   log(opponent === "friend"
-    ? `Zwei Spieler – Spieler 1: <b>${TYPES[picks.you].name}</b>, Spieler 2: <b>${TYPES[picks.bot].name}</b>.`
-    : `Bot (${LEVELS[difficulty].name}) spielt <b>${TYPES[picks.bot].name}</b>. Du spielst <b>${TYPES[picks.you].name}</b>.`, "");
+      ? `Zwei Spieler – Spieler 1: <b>${TYPES[picks.you].name}</b>, Spieler 2: <b>${TYPES[picks.bot].name}</b>.`
+    : opponent === "duel"
+      ? `Bot 1 (${LEVELS[diffs.you].name}, <b>${TYPES[picks.you].name}</b>) gegen
+         Bot 2 (${LEVELS[diffs.bot].name}, <b>${TYPES[picks.bot].name}</b>).`
+      : `Bot (${LEVELS[diffs.bot].name}) spielt <b>${TYPES[picks.bot].name}</b>. Du spielst <b>${TYPES[picks.you].name}</b>.`, "");
   render();
+
+  // Im Duell zieht die untere Seite zuerst – niemand tippt, also selbst anstoßen
+  if (!isHuman(turn)) setTimeout(() => botAct(turn), 600);
 }
 
 function newPiece(type, side, r, c) {
@@ -763,9 +791,13 @@ function backToPick() {
   renderPickScreen();
 }
 
-/* Wer darf gerade tippen? Gegen den Bot nur die untere Seite,
-   im Zwei-Spieler-Modus beide – abwechselnd auf demselben Gerät.  */
-function isHuman(side) { return side === "you" || opponent === "friend"; }
+/* Wer darf gerade tippen? Gegen den Bot nur die untere Seite, im
+   Zwei-Spieler-Modus beide, im Bot-Duell keine von beiden.  */
+function isHuman(side) {
+  if (opponent === "friend") return true;
+  if (opponent === "duel") return false;
+  return side === "you";
+}
 
 /* ============================================================
    Regeln / Züge
@@ -933,7 +965,7 @@ function afterAction(side, endsTurn = false) {
   if (!endsTurn && movesLeft > 1 && hasAnyAction(side)) {
     movesLeft--;
     render();
-    if (side === "bot") setTimeout(botAct, 420);
+    if (!isHuman(side)) setTimeout(() => botAct(side), 420);
     return;
   }
 
@@ -949,7 +981,7 @@ function afterAction(side, endsTurn = false) {
   if (next === "you") roundNum++;
   render();
 
-  if (next === "bot" && opponent === "bot") { setTimeout(botTurn, 520); return; }
+  if (!isHuman(next)) { setTimeout(() => botAct(next), 520); return; }
 
   // Menschliche Seite: wer nicht handeln kann, setzt aus
   if (!hasAnyAction(next)) {
@@ -965,23 +997,23 @@ function hasAnyAction(side) {
 
 function checkEnd() {
   if (gameOver) return true;
-  const zwei = opponent === "friend";
+  const zwei = opponent !== "bot";
   if (alive("bot").length === 0)
-    return endGame("you", zwei ? "Spieler 2 hat keine Figuren mehr." : "Alle gegnerischen Figuren ausgeschaltet.");
+    return endGame("you", zwei ? `${sideLabel("bot")} hat keine Figuren mehr.` : "Alle gegnerischen Figuren ausgeschaltet.");
   if (alive("you").length === 0)
-    return endGame("bot", zwei ? "Spieler 1 hat keine Figuren mehr." : "Dein Team wurde ausgelöscht.");
+    return endGame("bot", zwei ? `${sideLabel("you")} hat keine Figuren mehr.` : "Dein Team wurde ausgelöscht.");
   if (pieces.some(p => p.side === "you" && p.r === enemyHomeRow("you")))
-    return endGame("you", zwei ? "Spieler 1 hat die gegenüberliegende Grundreihe erreicht."
+    return endGame("you", zwei ? `${sideLabel("you")} hat die gegenüberliegende Grundreihe erreicht.`
                                : "Durchbruch! Du hast die gegnerische Grundreihe erreicht.");
   if (pieces.some(p => p.side === "bot" && p.r === enemyHomeRow("bot")))
-    return endGame("bot", zwei ? "Spieler 2 hat die gegenüberliegende Grundreihe erreicht."
+    return endGame("bot", zwei ? `${sideLabel("bot")} hat die gegenüberliegende Grundreihe erreicht.`
                                : "Der Gegner hat deine Grundreihe erreicht.");
   return false;
 }
 
 function endGame(winner, text) {
   gameOver = true;
-  const zwei = opponent === "friend";
+  const zwei = opponent !== "bot";
   let emoji, titel, klasse;
   if (winner === null) {
     emoji = "🤝"; titel = "Unentschieden"; klasse = "";
@@ -1016,29 +1048,27 @@ let searchDeadline = 0;
 let searchNodes = 0;
 let searchTimeUp = false;
 
-function botTurn() { botAct(); }
+function botAct(side) {
+  if (gameOver || turn !== side || isHuman(side)) return;
+  const lvl = LEVELS[diffs[side]];
 
-function botAct() {
-  if (gameOver || turn !== "bot") return;
-  const lvl = LEVELS[difficulty];
-
-  if (!hasAnyAction("bot")) {
+  if (!hasAnyAction(side)) {
     if (++skipStreak >= 2) { endGame(null, "Keine Seite kann noch ziehen."); render(); return; }
-    log("Der Bot kann nicht handeln – Runde wird übersprungen.", "bot");
-    afterAction("bot", true);
+    log(`${sideLabel(side)} kann nicht handeln – Runde wird übersprungen.`, side);
+    afterAction(side, true);
     return;
   }
 
   // Doppelzug kostet keine Aktion, verschafft aber eine zusätzliche –
   // deshalb vor der eigentlichen Wahl und nur, wenn es etwas zu holen gibt.
-  const dorf = alive("bot").find(p => p.type === "dorf" && !p.abilityUsed && p.disabled === 0);
+  const dorf = alive(side).find(p => p.type === "dorf" && !p.abilityUsed && p.disabled === 0);
   if (dorf && movesLeft === 1 && Math.random() < lvl.abilityUse) {
-    const lohnt = alive("bot").some(p => p.disabled === 0 && legalMoves(p).some(m => m.capture));
-    if (lohnt) { doDouble(dorf); setTimeout(botAct, 420); return; }
+    const lohnt = alive(side).some(p => p.disabled === 0 && legalMoves(p).some(m => m.capture));
+    if (lohnt) { doDouble(dorf); setTimeout(() => botAct(side), 420); return; }
   }
 
-  const a = chooseBotAction(lvl);
-  if (!a) { afterAction("bot", true); return; }
+  const a = chooseBotAction(lvl, side);
+  if (!a) { afterAction(side, true); return; }
   if (a.kind === "kill") { doKill(a.p, a.target); return; }
   if (a.kind === "stun") { doStun(a.p, a.target); return; }
   doMove(a.p, a.r, a.c);
@@ -1093,16 +1123,22 @@ function undoAction(u) {
   u.target.disabled = 0;
 }
 
+function gegenseite(side) { return side === "you" ? "bot" : "you"; }
+
 // Entschiedene Stellung? Frühe Siege zählen mehr als späte.
-function terminalScore(ply) {
-  let bot = 0, you = 0;
+// maxSide = die Seite, aus deren Sicht bewertet wird.
+function terminalScore(ply, maxSide) {
+  let bot = 0, you = 0, sieger = null;
   for (const p of pieces) {
-    if (p.side === "bot") { bot++; if (p.r === N - 1) return WIN_SCORE - ply; }
-    else { you++; if (p.r === 0) return -WIN_SCORE + ply; }
+    if (p.side === "bot") { bot++; if (p.r === N - 1) sieger = "bot"; }
+    else { you++; if (p.r === 0) sieger = "you"; }
   }
-  if (!you) return WIN_SCORE - ply;
-  if (!bot) return -WIN_SCORE + ply;
-  return null;
+  if (!sieger) {
+    if (!you) sieger = "bot";
+    else if (!bot) sieger = "you";
+    else return null;
+  }
+  return sieger === maxSide ? WIN_SCORE - ply : -WIN_SCORE + ply;
 }
 
 /* Welche Felder greift welche Seite an? Einmal pro Bewertung aufgebaut –
@@ -1136,8 +1172,8 @@ function buildAttackMap() {
   }
 }
 
-// Bewertung aus Sicht des Bots
-function evaluate() {
+// Bewertung aus Sicht von maxSide
+function evaluate(maxSide) {
   buildAttackMap();
   let s = 0;
   for (const p of pieces) {
@@ -1147,25 +1183,26 @@ function evaluate() {
     if (t.ability && !p.abilityUsed) v += 8;
     if (p.disabled > 0) v -= 10;
     if (attackMap[p.r * N + p.c] & (p.side === "bot" ? 1 : 2)) v -= t.value * 3;
-    s += p.side === "bot" ? v : -v;
+    s += p.side === maxSide ? v : -v;
   }
   return s;
 }
 
-function search(depth, alpha, beta, side, ply) {
-  const t = terminalScore(ply);
+function search(depth, alpha, beta, side, ply, maxSide) {
+  const t = terminalScore(ply, maxSide);
   if (t !== null) return t;
   if ((++searchNodes & 255) === 0 && performance.now() > searchDeadline) searchTimeUp = true;
-  if (depth <= 0 || searchTimeUp) return evaluate();
+  if (depth <= 0 || searchTimeUp) return evaluate(maxSide);
 
   const acts = genActions(side);
-  if (!acts.length) return evaluate();
+  if (!acts.length) return evaluate(maxSide);
+  const gegner = gegenseite(side);
 
-  if (side === "bot") {
+  if (side === maxSide) {
     let best = -Infinity;
     for (const a of acts) {
       const u = applyAction(a);
-      const v = search(depth - 1, alpha, beta, "you", ply + 1);
+      const v = search(depth - 1, alpha, beta, gegner, ply + 1, maxSide);
       undoAction(u);
       if (v > best) best = v;
       if (best > alpha) alpha = best;
@@ -1176,7 +1213,7 @@ function search(depth, alpha, beta, side, ply) {
   let best = Infinity;
   for (const a of acts) {
     const u = applyAction(a);
-    const v = search(depth - 1, alpha, beta, "bot", ply + 1);
+    const v = search(depth - 1, alpha, beta, gegner, ply + 1, maxSide);
     undoAction(u);
     if (v < best) best = v;
     if (best < beta) beta = best;
@@ -1185,16 +1222,18 @@ function search(depth, alpha, beta, side, ply) {
   return best;
 }
 
-function chooseBotAction(lvl) {
-  const acts = genActions("bot");
+function chooseBotAction(lvl, side = "bot") {
+  const acts = genActions(side);
 
   // Fähigkeiten treten als gleichwertige Kandidaten an
   if (Math.random() < lvl.abilityUse) {
     for (const p of pieces) {
-      if (p.side !== "bot" || p.disabled > 0 || p.abilityUsed) continue;
+      if (p.side !== side || p.disabled > 0 || p.abilityUsed) continue;
       if (p.type === "ninja") killTargets(p).forEach(t => acts.push({ kind: "kill", p, target: t }));
       if (p.type === "mafia") {
-        stunTargets(p).slice().sort((a, b) => a.r - b.r).slice(0, 3)
+        // am weitesten vorgedrungene Gegner zuerst – gilt für beide Seiten
+        const fortschritt = o => (o.side === "bot" ? o.r : N - 1 - o.r);
+        stunTargets(p).slice().sort((a, b) => fortschritt(b) - fortschritt(a)).slice(0, 3)
           .forEach(t => acts.push({ kind: "stun", p, target: t }));
       }
     }
@@ -1216,7 +1255,7 @@ function chooseBotAction(lvl) {
     let besteJetzt = null, bestScore = -Infinity;
     for (const a of acts) {
       const u = applyAction(a);
-      let s = search(tiefe - 1, -Infinity, Infinity, "you", 1);
+      let s = search(tiefe - 1, -Infinity, Infinity, gegenseite(side), 1, side);
       undoAction(u);
       if (lvl.noise) s += (Math.random() - 0.5) * lvl.noise;
       if (s > bestScore) { bestScore = s; besteJetzt = a; }
@@ -1302,9 +1341,9 @@ function render() {
       : mode === "stun" ? "Ziel zum Einschüchtern wählen"
       : "Figur antippen, dann Zielfeld";
   } else {
-    tag.className = "turn-tag bot";
-    tag.textContent = "Bot am Zug";
-    hint.textContent = LEVELS[difficulty].name + " – rechnet …";
+    tag.className = "turn-tag " + (turn === "you" ? "you" : "bot");
+    tag.textContent = opponent === "duel" ? `${sideLabel(turn)} am Zug` : "Bot am Zug";
+    hint.textContent = LEVELS[diffs[turn]].name + " – rechnet …";
   }
 
   renderPanel(sel);
@@ -1421,6 +1460,7 @@ function renderPanel(sel) {
 
 function sideLabel(side) {
   if (opponent === "friend") return side === "you" ? "Spieler 1" : "Spieler 2";
+  if (opponent === "duel") return side === "you" ? "Bot 1" : "Bot 2";
   return side === "you" ? "Du" : "Der Bot";
 }
 
@@ -1431,9 +1471,7 @@ function coord(p) { return String.fromCharCode(65 + p.c) + (N - p.r); }
 
 function nameOf(p) {
   const t = TYPES[p.type];
-  if (opponent === "friend") {
-    return `${p.side === "you" ? "Spieler 1" : "Spieler 2"}: ${t.name} (${coord(p)})`;
-  }
+  if (opponent !== "bot") return `${sideLabel(p.side)}: ${t.name} (${coord(p)})`;
   const artikel = p.side === "you"
     ? (t.genus === "f" ? "Deine" : "Dein")
     : (t.genus === "f" ? "Gegnerische" : "Gegnerischer");
