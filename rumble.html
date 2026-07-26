@@ -36,7 +36,10 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  .app { max-width: 560px; margin: 0 auto; padding: 20px 14px 60px; }
+  /* Der untere Abstand sitzt am Spielbildschirm, nicht am Rahmen – sonst
+     bliebe unter dem angedockten Start-Button eine tote Lücke stehen. */
+  .app { max-width: 560px; margin: 0 auto; padding: 20px 14px 16px; }
+  #viewGame { padding-bottom: 44px; }
 
   /* Header */
   .header {
@@ -107,6 +110,17 @@
   }
   .info-text { font-size: 12.5px; color: var(--text2); line-height: 1.4; }
   .ability-name { color: var(--accent); font-weight: 600; }
+
+  /* Der Button bleibt am unteren Rand stehen, damit er nach der Auswahl
+     nicht unter der Falzkante liegt. */
+  .start-dock {
+    position: sticky;
+    bottom: 0;
+    margin-top: 14px;
+    padding: 14px 0 10px;
+    background: linear-gradient(to top, var(--bg) 62%, rgba(15, 15, 15, 0));
+  }
+  .start-dock .start-btn { margin-top: 0; }
 
   .start-btn {
     margin-top: 18px;
@@ -283,13 +297,13 @@
   .ability-btn.cancel { border-color: var(--enemy); color: var(--enemy); background: var(--enemy-bg); }
   .ability-desc { font-size: 11.5px; color: var(--text3); line-height: 1.4; margin-top: 7px; }
 
+  /* Kein eigener Scrollbereich – ein verschachtelter Scroller fängt sonst
+     die Wischgeste ab und die Seite selbst bewegt sich nicht mehr. */
   .log {
     margin-top: 12px;
     display: flex;
     flex-direction: column;
     gap: 5px;
-    max-height: 108px;
-    overflow-y: auto;
   }
   .log-line { font-size: 11.5px; color: var(--text3); line-height: 1.35; }
   .log-line.you { color: #b8b8b8; }
@@ -310,7 +324,11 @@
   }
   .ghost-btn:hover { color: var(--text2); border-color: #3a3a3a; }
 
-  .rules { margin-top: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .rules {
+    margin-top: 12px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px;
+    scroll-margin-bottom: 16px;   /* klebt beim Aufklappen nicht am Bildrand */
+  }
   .rules h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #777; margin-bottom: 8px; }
   .rules ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
   .rules li { font-size: 12px; color: var(--text2); line-height: 1.45; padding-left: 14px; position: relative; }
@@ -362,7 +380,9 @@
       Der Gegner (Bot) wählt verdeckt.
     </p>
     <div class="char-list" id="charList"></div>
-    <button class="start-btn" id="startBtn" disabled onclick="startGame()">Spiel starten</button>
+    <div class="start-dock">
+      <button class="start-btn" id="startBtn" disabled onclick="startGame()">Spiel starten</button>
+    </div>
   </div>
 
   <!-- ============ SCREEN 2: BRETT ============ -->
@@ -405,7 +425,7 @@
     <div class="log" id="log"></div>
 
     <div class="bottom-bar">
-      <button class="ghost-btn" onclick="toggleRules()">Regeln</button>
+      <button class="ghost-btn" id="rulesBtn" onclick="toggleRules()">Regeln</button>
       <button class="ghost-btn" onclick="backToPick()">Neues Spiel</button>
     </div>
 
@@ -571,7 +591,9 @@ function startGame() {
   document.getElementById("roundBox").classList.remove("hidden");
   document.getElementById("overlay").classList.add("hidden");
   document.getElementById("rulesBox").classList.add("hidden");
+  document.getElementById("rulesBtn").textContent = "Regeln";
   resetToast();
+  scrollTo(0, 0);
 
   log(`Gegner spielt <b>${TYPES[botType].name}</b>. Du spielst <b>${TYPES[pickedType].name}</b>.`, "");
   render();
@@ -583,6 +605,7 @@ function newPiece(type, side, r, c) {
 
 function backToPick() {
   resetToast();
+  scrollTo(0, 0);
   document.getElementById("overlay").classList.add("hidden");
   document.getElementById("viewGame").classList.add("hidden");
   document.getElementById("roundBox").classList.add("hidden");
@@ -1178,12 +1201,16 @@ function log(html, side) {
 }
 
 function renderLog() {
-  document.getElementById("log").innerHTML = logLines
+  document.getElementById("log").innerHTML = logLines.slice(0, 4)
     .map(l => `<div class="log-line ${l.side}">${l.html}</div>`).join("");
 }
 
 function toggleRules() {
-  document.getElementById("rulesBox").classList.toggle("hidden");
+  const box = document.getElementById("rulesBox");
+  const offen = !box.classList.toggle("hidden");
+  document.getElementById("rulesBtn").textContent = offen ? "Regeln schließen" : "Regeln";
+  // Ohne Mitscrollen wächst der Kasten unsichtbar unterhalb des Bildrands an
+  if (offen) box.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "end" });
 }
 
 /* ---------- Init ---------- */
