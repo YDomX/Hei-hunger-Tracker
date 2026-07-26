@@ -229,6 +229,14 @@
   }
   .piece.you { background: var(--accent-bg); border-color: var(--accent); }
   .piece.bot { background: var(--enemy-bg); border-color: var(--enemy); }
+  /* Bauern: schlichter Schachglyph statt Emoji, in der Farbe ihrer Seite */
+  .piece.pawn {
+    font-size: clamp(13px, 3.6vw, 20px);
+    font-family: "DejaVu Sans", "Segoe UI Symbol", "Apple Symbols", sans-serif;
+  }
+  .piece.pawn.you { color: var(--accent); }
+  .piece.pawn.bot { color: var(--enemy); }
+
   .piece.selected { transform: scale(1.1); box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(250,204,21,0.4); }
   .piece.disabled { opacity: 0.4; filter: grayscale(1); }
   .piece.actable { cursor: pointer; }
@@ -475,6 +483,7 @@
         <li>10×10 Brett. Die gelbe Seite startet unten, die rote oben. Pro Runde eine Aktion: ziehen <em>oder</em> Fähigkeit.</li>
         <li><b>Dorfbewohner &amp; Mafia:</b> 1 Feld vorwärts oder 2 Felder nach links/rechts (Sprung, überspringt Figuren).</li>
         <li><b>Ninja:</b> 1 oder 2 Felder vorwärts oder rückwärts in seiner Spalte. Der 2er-Zug braucht ein freies Feld dazwischen.</li>
+        <li><b>Bauer ♟:</b> 1 Feld vorwärts – aus der Startreihe wahlweise 2, wenn das Feld dazwischen frei ist. Danach nur noch einzeln. Keine Fähigkeit.</li>
         <li>Ziehst du auf ein Feld mit einer gegnerischen Figur, schlägst du sie.</li>
         <li>Jede Figur hat ihre Fähigkeit <b>einmal pro Spiel</b> (⚡ = noch verfügbar).</li>
         <li><b>Sieg:</b> alle gegnerischen Figuren schlagen – oder mit einer Figur die gegnerische Grundreihe erreichen.</li>
@@ -524,26 +533,34 @@ const TYPES = {
     ability: "Einschüchtern",
     abilityDesc: "Macht eine beliebige gegnerische Figur für eine Runde handlungsunfähig.",
     reach: [[-1,0],[0,-2],[0,2]]
+  },
+  // Fußvolk – nicht wählbar, steht bei beiden Seiten als Reihe vor den Figuren
+  bauer: {
+    key: "bauer", name: "Bauer", icon: "♟", role: "Das Fußvolk", value: 4,
+    genus: "m",
+    move: "1 Feld vorwärts – aus der Startreihe wahlweise 2",
+    reach: [[-1,0],[-2,0]]
   }
 };
 
-const ORDER = ["dorf", "ninja", "mafia"];
+const ORDER = ["dorf", "ninja", "mafia"];   // wählbare Hauptcharaktere
 const SPAWN_COLS = [1, 3, 5, 7, 9];
+const PAWN_ROW = { you: N - 2, bot: 1 };    // Startreihe der Bauern je Seite
 
 /* ---------- Schwierigkeitsgrade ----------
    depth = Halbzüge, die der Bot vorausrechnet (inkl. eigenem Zug).
    noise/blunder verwässern die Wahl bewusst auf den unteren Stufen.       */
 const LEVELS = {
-  leicht: { name: "Leicht", depth: 1, noise: 26, blunder: 0.45, abilityUse: 0.15,
-            hint: "Sieht nur den eigenen Zug, zieht oft planlos und nutzt Fähigkeiten kaum." },
-  mittel: { name: "Mittel", depth: 2, noise: 7, blunder: 0.14, abilityUse: 0.5,
-            hint: "Sieht deine Antwort voraus, schlägt gern und meidet bedrohte Felder." },
-  schwer: { name: "Schwer", depth: 3, noise: 2, blunder: 0.04, abilityUse: 0.85,
-            hint: "Rechnet drei Halbzüge voraus und setzt Fähigkeiten gezielt ein." },
+  leicht: { name: "Leicht", depth: 2, noise: 30, blunder: 0.5, abilityUse: 0.15,
+            hint: "Zieht in jedem zweiten Zug planlos und nutzt Fähigkeiten kaum." },
+  mittel: { name: "Mittel", depth: 2, noise: 8, blunder: 0.15, abilityUse: 0.5,
+            hint: "Sieht deine Antwort voraus, schlägt gern – patzt aber noch regelmäßig." },
+  schwer: { name: "Schwer", depth: 4, noise: 3, blunder: 0.05, abilityUse: 0.85,
+            hint: "Rechnet vier Halbzüge voraus und setzt Fähigkeiten gezielt ein." },
   ultra:  { name: "Ultra Schwer", depth: 4, noise: 0, blunder: 0, abilityUse: 1, hot: true,
-            hint: "Rechnet vier Halbzüge voraus, verschenkt keine Figur und straft jeden Fehler ab." },
-  god:    { name: "God", depth: 7, noise: 0, blunder: 0, abilityUse: 1, hot: true,
-            hint: "Rechnet sieben Halbzüge voraus, spielt fehlerfrei und sieht deinen Durchbruch lange vorher." }
+            hint: "Wie Schwer, aber ohne jeden Patzer: verschenkt keine einzige Figur." },
+  god:    { name: "God", depth: 6, noise: 0, blunder: 0, abilityUse: 1, hot: true,
+            hint: "Rechnet sechs Halbzüge voraus und sieht deinen Durchbruch lange vorher." }
 };
 const LEVEL_ORDER = ["leicht", "mittel", "schwer", "ultra", "god"];
 
@@ -603,11 +620,11 @@ function renderPickScreen() {
   document.getElementById("setupBox").classList.toggle("hidden", zwei && pickPhase === 2);
   document.getElementById("diffRow").classList.toggle("hidden", zwei);
   document.getElementById("pickIntro").innerHTML = zwei
-    ? `<strong>Spieler ${pickPhase}</strong> wählt: Dein Team besteht aus <strong>3×</strong> deiner Wahl
-       und je <strong>1×</strong> der beiden anderen.`
+    ? `<strong>Spieler ${pickPhase}</strong> wählt: Dein Team besteht aus <strong>3×</strong> deiner Wahl,
+       je <strong>1×</strong> der beiden anderen und <strong>10 Bauern</strong> in der vorderen Reihe.`
     : `Wähle deinen <strong>Hauptcharakter</strong>. Dein Team besteht aus
-       <strong>3×</strong> deiner Wahl und je <strong>1×</strong> der beiden anderen.
-       Der Gegner (Bot) wählt verdeckt.`;
+       <strong>3×</strong> deiner Wahl, je <strong>1×</strong> der beiden anderen
+       und <strong>10 Bauern</strong> in der vorderen Reihe. Der Gegner (Bot) wählt verdeckt.`;
   document.getElementById("startBtn").textContent =
     (zwei && pickPhase === 1) ? "Weiter zu Spieler 2" : "Spiel starten";
   document.getElementById("startBtn").disabled = !pickedType;
@@ -701,6 +718,10 @@ function startGame() {
     pieces.push(newPiece(mine[i], "you", N - 1, col));
     pieces.push(newPiece(theirs[i], "bot", 0, col));
   });
+  for (let col = 0; col < N; col++) {
+    pieces.push(newPiece("bauer", "you", PAWN_ROW.you, col));
+    pieces.push(newPiece("bauer", "bot", PAWN_ROW.bot, col));
+  }
 
   turn = "you";
   movesLeft = 1;
@@ -768,7 +789,11 @@ function legalMoves(p) {
     out.push({ r, c, capture: !!o });
   };
 
-  if (p.type === "ninja") {
+  if (p.type === "bauer") {
+    // 1 Feld vorwärts; aus der Startreihe wahlweise 2, sofern der Weg frei ist
+    push(p.r + dir, p.c);
+    if (p.r === PAWN_ROW[p.side] && !pieceAt(p.r + dir, p.c)) push(p.r + 2 * dir, p.c);
+  } else if (p.type === "ninja") {
     for (const d of [dir, -dir]) {
       // 1 Feld
       push(p.r + d, p.c);
@@ -1080,16 +1105,48 @@ function terminalScore(ply) {
   return null;
 }
 
+/* Welche Felder greift welche Seite an? Einmal pro Bewertung aufgebaut –
+   mit 30 Figuren wäre eine Einzelabfrage je Figur quadratisch teuer.
+   Bit 1 = von "you" bedroht, Bit 2 = von "bot" bedroht.                    */
+const attackMap = new Uint8Array(N * N);
+
+function buildAttackMap() {
+  attackMap.fill(0);
+  for (const o of pieces) {
+    if (o.disabled > 0) continue;
+    const bit = o.side === "you" ? 1 : 2;
+    const dir = forwardDir(o.side);
+    if (o.type === "bauer") {
+      const r1 = o.r + dir;
+      if (r1 >= 0 && r1 < N) attackMap[r1 * N + o.c] |= bit;
+    } else if (o.type === "ninja") {
+      for (const d of [dir, -dir]) {
+        const r1 = o.r + d;
+        if (r1 < 0 || r1 >= N) continue;
+        attackMap[r1 * N + o.c] |= bit;
+        const r2 = o.r + 2 * d;
+        if (r2 >= 0 && r2 < N && !pieceAt(r1, o.c)) attackMap[r2 * N + o.c] |= bit;
+      }
+    } else {
+      const r1 = o.r + dir;
+      if (r1 >= 0 && r1 < N) attackMap[r1 * N + o.c] |= bit;
+      if (o.c - 2 >= 0) attackMap[o.r * N + o.c - 2] |= bit;
+      if (o.c + 2 < N) attackMap[o.r * N + o.c + 2] |= bit;
+    }
+  }
+}
+
 // Bewertung aus Sicht des Bots
 function evaluate() {
+  buildAttackMap();
   let s = 0;
   for (const p of pieces) {
     const t = TYPES[p.type];
     const vorne = p.side === "bot" ? p.r : (N - 1 - p.r);
     let v = t.value * 12 + vorne * vorne * 1.2;
-    if (!p.abilityUsed) v += 8;
+    if (t.ability && !p.abilityUsed) v += 8;
     if (p.disabled > 0) v -= 10;
-    if (isAttackedBy(p.r, p.c, p.side === "bot" ? "you" : "bot", p)) v -= t.value * 3;
+    if (attackMap[p.r * N + p.c] & (p.side === "bot" ? 1 : 2)) v -= t.value * 3;
     s += p.side === "bot" ? v : -v;
   }
   return s;
@@ -1149,32 +1206,25 @@ function chooseBotAction(lvl) {
   searchTimeUp = false;
   searchDeadline = performance.now() + SEARCH_BUDGET_MS;
 
-  let best = null, bestScore = -Infinity;
-  for (const a of acts) {
-    const u = applyAction(a);
-    let s = search(lvl.depth - 1, -Infinity, Infinity, "you", 1);
-    undoAction(u);
-    if (lvl.noise) s += (Math.random() - 0.5) * lvl.noise;
-    if (s > bestScore) { bestScore = s; best = a; }
+  /* Iterative Vertiefung über ausschließlich gerade Gesamttiefen.
+     Bei ungerader Tiefe endet eine Variante nach dem eigenen Zug – der Bot
+     sähe das Schlagen, aber nicht das Zurückschlagen und würde Figuren
+     verschenken. Läuft eine Runde ins Zeitlimit, wird sie verworfen und das
+     Ergebnis der letzten vollständigen Tiefe genommen.                      */
+  let best = acts[0];
+  for (let tiefe = 2; tiefe <= lvl.depth; tiefe += 2) {
+    let besteJetzt = null, bestScore = -Infinity;
+    for (const a of acts) {
+      const u = applyAction(a);
+      let s = search(tiefe - 1, -Infinity, Infinity, "you", 1);
+      undoAction(u);
+      if (lvl.noise) s += (Math.random() - 0.5) * lvl.noise;
+      if (s > bestScore) { bestScore = s; besteJetzt = a; }
+    }
+    if (searchTimeUp) break;          // unvollständig – nicht übernehmen
+    best = besteJetzt;
   }
   return best;
-}
-
-function isAttackedBy(r, c, side, ignorePiece) {
-  return pieces.some(o => {
-    if (o.side !== side || o.disabled > 0 || o === ignorePiece) return false;
-    const dir = forwardDir(o.side);
-    if (o.type === "ninja") {
-      if (o.c !== c) return false;
-      const d = r - o.r;
-      if (Math.abs(d) === 1) return true;
-      if (Math.abs(d) === 2) return !pieceAt(o.r + d / 2, o.c);
-      return false;
-    }
-    if (o.r + dir === r && o.c === c) return true;
-    if (o.r === r && Math.abs(o.c - c) === 2) return true;
-    return false;
-  });
 }
 
 /* ============================================================
@@ -1203,12 +1253,13 @@ function render() {
         el.className = "piece " + (p.side === "you" ? "you" : "bot")
           + (p.id === selectedId ? " selected" : "")
           + (p.disabled > 0 ? " disabled" : "")
+          + (p.type === "bauer" ? " pawn" : "")
           + (aktiv && p.side === turn ? " actable" : "");
         el.dataset.pid = p.id;
         el.textContent = TYPES[p.type].icon;
 
         if (p.disabled > 0) el.innerHTML += '<span class="badge">💤</span>';
-        else if (!p.abilityUsed) el.innerHTML += '<span class="badge">⚡</span>';
+        else if (TYPES[p.type].ability && !p.abilityUsed) el.innerHTML += '<span class="badge">⚡</span>';
 
         cell.appendChild(el);
       }
