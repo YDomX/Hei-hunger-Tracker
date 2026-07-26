@@ -31,7 +31,8 @@
     min-height: 100dvh;
     background: var(--bg);
     color: var(--text);
-    font-family: 'DM Sans', system-ui, sans-serif;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
   }
@@ -59,6 +60,37 @@
   .hidden { display: none !important; }
 
   /* ---------- Auswahl ---------- */
+  .setup {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .setup-row { display: flex; flex-direction: column; gap: 6px; }
+  .setup-label {
+    font-size: 10px; color: #777; text-transform: uppercase;
+    letter-spacing: 0.08em; font-weight: 600;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 6px 11px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: #161616;
+    color: #888;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .chip.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 700; }
+  .chip.active.hot { border-color: var(--enemy); background: var(--enemy-bg); color: var(--enemy); }
+  .setup-hint { font-size: 11.5px; color: var(--text3); line-height: 1.45; }
+
   .pick-intro { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 16px; }
   .pick-intro strong { color: var(--accent); font-weight: 600; }
 
@@ -374,14 +406,22 @@
 
   <!-- ============ SCREEN 1: CHARAKTERWAHL ============ -->
   <div id="viewPick">
-    <p class="pick-intro">
-      Wähle deinen <strong>Hauptcharakter</strong>. Dein Team besteht aus
-      <strong>3×</strong> deiner Wahl und je <strong>1×</strong> der beiden anderen.
-      Der Gegner (Bot) wählt verdeckt.
-    </p>
+    <div class="setup" id="setupBox">
+      <div class="setup-row">
+        <span class="setup-label">Gegner</span>
+        <div class="chips" id="oppChips"></div>
+      </div>
+      <div class="setup-row" id="diffRow">
+        <span class="setup-label">Schwierigkeit</span>
+        <div class="chips" id="diffChips"></div>
+      </div>
+      <p class="setup-hint" id="setupHint"></p>
+    </div>
+
+    <p class="pick-intro" id="pickIntro"></p>
     <div class="char-list" id="charList"></div>
     <div class="start-dock">
-      <button class="start-btn" id="startBtn" disabled onclick="startGame()">Spiel starten</button>
+      <button class="start-btn" id="startBtn" disabled onclick="onStartBtn()">Spiel starten</button>
     </div>
   </div>
 
@@ -432,7 +472,7 @@
     <div class="rules hidden" id="rulesBox">
       <h3>Regeln</h3>
       <ul>
-        <li>10×10 Brett. Du startest unten, der Bot oben. Pro Runde eine Aktion: ziehen <em>oder</em> Fähigkeit.</li>
+        <li>10×10 Brett. Die gelbe Seite startet unten, die rote oben. Pro Runde eine Aktion: ziehen <em>oder</em> Fähigkeit.</li>
         <li><b>Dorfbewohner &amp; Mafia:</b> 1 Feld vorwärts oder 2 Felder nach links/rechts (Sprung, überspringt Figuren).</li>
         <li><b>Ninja:</b> 1 oder 2 Felder vorwärts oder rückwärts in seiner Spalte. Der 2er-Zug braucht ein freies Feld dazwischen.</li>
         <li>Ziehst du auf ein Feld mit einer gegnerischen Figur, schlägst du sie.</li>
@@ -490,10 +530,31 @@ const TYPES = {
 const ORDER = ["dorf", "ninja", "mafia"];
 const SPAWN_COLS = [1, 3, 5, 7, 9];
 
+/* ---------- Schwierigkeitsgrade ----------
+   depth = Halbzüge, die der Bot vorausrechnet (inkl. eigenem Zug).
+   noise/blunder verwässern die Wahl bewusst auf den unteren Stufen.       */
+const LEVELS = {
+  leicht: { name: "Leicht", depth: 1, noise: 26, blunder: 0.45, abilityUse: 0.15,
+            hint: "Sieht nur den eigenen Zug, zieht oft planlos und nutzt Fähigkeiten kaum." },
+  mittel: { name: "Mittel", depth: 2, noise: 7, blunder: 0.14, abilityUse: 0.5,
+            hint: "Sieht deine Antwort voraus, schlägt gern und meidet bedrohte Felder." },
+  schwer: { name: "Schwer", depth: 3, noise: 2, blunder: 0.04, abilityUse: 0.85,
+            hint: "Rechnet drei Halbzüge voraus und setzt Fähigkeiten gezielt ein." },
+  ultra:  { name: "Ultra Schwer", depth: 4, noise: 0, blunder: 0, abilityUse: 1, hot: true,
+            hint: "Rechnet vier Halbzüge voraus, verschenkt keine Figur und straft jeden Fehler ab." },
+  god:    { name: "God", depth: 7, noise: 0, blunder: 0, abilityUse: 1, hot: true,
+            hint: "Rechnet sieben Halbzüge voraus, spielt fehlerfrei und sieht deinen Durchbruch lange vorher." }
+};
+const LEVEL_ORDER = ["leicht", "mittel", "schwer", "ultra", "god"];
+
 /* ---------- Spielzustand ---------- */
 let pieces = [];
 let pickedType = null;
-let botType = null;
+let opponent = "bot";        // "bot" = gegen den Computer, "friend" = zwei Spieler
+let difficulty = "mittel";
+let pickPhase = 1;           // im Zwei-Spieler-Modus wählen beide nacheinander
+let picks = { you: null, bot: null };
+let skipStreak = 0;
 let turn = "you";          // "you" | "bot"
 let movesLeft = 1;
 let selectedId = null;
@@ -510,6 +571,50 @@ let pendingCapture = null;
 /* ============================================================
    Charakterauswahl
    ============================================================ */
+function buildSetup() {
+  const opp = document.getElementById("oppChips");
+  opp.innerHTML = "";
+  [["bot", "Gegen Bot"], ["friend", "2 Spieler"]].forEach(([key, label]) => {
+    const b = document.createElement("button");
+    b.className = "chip" + (opponent === key ? " active" : "");
+    b.textContent = label;
+    b.onclick = () => { opponent = key; pickPhase = 1; pickedType = null; renderPickScreen(); };
+    opp.appendChild(b);
+  });
+
+  const diff = document.getElementById("diffChips");
+  diff.innerHTML = "";
+  LEVEL_ORDER.forEach(key => {
+    const lvl = LEVELS[key];
+    const b = document.createElement("button");
+    b.className = "chip" + (difficulty === key ? " active" : "") + (lvl.hot ? " hot" : "");
+    b.textContent = lvl.name;
+    b.onclick = () => { difficulty = key; renderPickScreen(); };
+    diff.appendChild(b);
+  });
+
+  document.getElementById("setupHint").textContent = opponent === "friend"
+    ? "Ihr spielt abwechselnd auf demselben Gerät: Spieler 1 zieht unten, danach übernimmt Spieler 2 die obere Seite."
+    : LEVELS[difficulty].hint;
+}
+
+function renderPickScreen() {
+  const zwei = opponent === "friend";
+  document.getElementById("setupBox").classList.toggle("hidden", zwei && pickPhase === 2);
+  document.getElementById("diffRow").classList.toggle("hidden", zwei);
+  document.getElementById("pickIntro").innerHTML = zwei
+    ? `<strong>Spieler ${pickPhase}</strong> wählt: Dein Team besteht aus <strong>3×</strong> deiner Wahl
+       und je <strong>1×</strong> der beiden anderen.`
+    : `Wähle deinen <strong>Hauptcharakter</strong>. Dein Team besteht aus
+       <strong>3×</strong> deiner Wahl und je <strong>1×</strong> der beiden anderen.
+       Der Gegner (Bot) wählt verdeckt.`;
+  document.getElementById("startBtn").textContent =
+    (zwei && pickPhase === 1) ? "Weiter zu Spieler 2" : "Spiel starten";
+  document.getElementById("startBtn").disabled = !pickedType;
+  buildSetup();
+  buildCharList();
+}
+
 function buildCharList() {
   const wrap = document.getElementById("charList");
   wrap.innerHTML = "";
@@ -565,14 +670,33 @@ function teamComposition(main) {
   return [main, others[0], main, others[1], main];
 }
 
-function startGame() {
+function onStartBtn() {
   if (!pickedType) return;
-  botType = ORDER[Math.floor(Math.random() * ORDER.length)];
 
+  // Im Zwei-Spieler-Modus wählt erst Spieler 1, dann Spieler 2
+  if (opponent === "friend" && pickPhase === 1) {
+    picks.you = pickedType;
+    pickPhase = 2;
+    pickedType = null;
+    renderPickScreen();
+    scrollTo(0, 0);
+    return;
+  }
+
+  if (opponent === "friend") {
+    picks.bot = pickedType;
+  } else {
+    picks.you = pickedType;
+    picks.bot = ORDER[Math.floor(Math.random() * ORDER.length)];
+  }
+  startGame();
+}
+
+function startGame() {
   pieces = [];
   nextId = 1;
-  const mine = teamComposition(pickedType);
-  const theirs = teamComposition(botType);
+  const mine = teamComposition(picks.you);
+  const theirs = teamComposition(picks.bot);
   SPAWN_COLS.forEach((col, i) => {
     pieces.push(newPiece(mine[i], "you", N - 1, col));
     pieces.push(newPiece(theirs[i], "bot", 0, col));
@@ -585,6 +709,7 @@ function startGame() {
   gameOver = false;
   roundNum = 1;
   logLines = [];
+  skipStreak = 0;
 
   document.getElementById("viewPick").classList.add("hidden");
   document.getElementById("viewGame").classList.remove("hidden");
@@ -595,7 +720,9 @@ function startGame() {
   resetToast();
   scrollTo(0, 0);
 
-  log(`Gegner spielt <b>${TYPES[botType].name}</b>. Du spielst <b>${TYPES[pickedType].name}</b>.`, "");
+  log(opponent === "friend"
+    ? `Zwei Spieler – Spieler 1: <b>${TYPES[picks.you].name}</b>, Spieler 2: <b>${TYPES[picks.bot].name}</b>.`
+    : `Bot (${LEVELS[difficulty].name}) spielt <b>${TYPES[picks.bot].name}</b>. Du spielst <b>${TYPES[picks.you].name}</b>.`, "");
   render();
 }
 
@@ -610,8 +737,14 @@ function backToPick() {
   document.getElementById("viewGame").classList.add("hidden");
   document.getElementById("roundBox").classList.add("hidden");
   document.getElementById("viewPick").classList.remove("hidden");
-  buildCharList();
+  pickPhase = 1;
+  pickedType = null;
+  renderPickScreen();
 }
+
+/* Wer darf gerade tippen? Gegen den Bot nur die untere Seite,
+   im Zwei-Spieler-Modus beide – abwechselnd auf demselben Gerät.  */
+function isHuman(side) { return side === "you" || opponent === "friend"; }
 
 /* ============================================================
    Regeln / Züge
@@ -673,7 +806,7 @@ function abilityAvailable(p) {
    Spielerinteraktion
    ============================================================ */
 function onCellClick(r, c) {
-  if (gameOver || turn !== "you") return;
+  if (gameOver || !isHuman(turn)) return;
   const target = pieceAt(r, c);
   const sel = byId(selectedId);
 
@@ -687,8 +820,8 @@ function onCellClick(r, c) {
     return;
   }
 
-  // Eigene Figur auswählen
-  if (target && target.side === "you") {
+  // Figur der Seite auswählen, die am Zug ist
+  if (target && target.side === turn) {
     selectedId = (selectedId === target.id) ? null : target.id;
     mode = "move";
     render();
@@ -708,12 +841,13 @@ function onCellClick(r, c) {
 
 function doMove(p, r, c) {
   const victim = pieceAt(r, c);
+  skipStreak = 0;
   pendingAnim = { id: p.id, fromR: p.r, fromC: p.c, toR: r, toC: c };
   if (victim) {
     // Geschlagene Figur bleibt sichtbar, bis der Angreifer angekommen ist
     pendingCapture = { r, c, type: victim.type, side: victim.side };
+    log(`${nameOf(p)} schlägt ${nameOf(victim)}`, p.side);
     pieces = pieces.filter(x => x.id !== victim.id);
-    log(`${sideWord(p.side)} ${TYPES[p.type].name} schlägt ${TYPES[victim.type].name}.`, p.side);
   }
   p.r = r; p.c = c;
   selectedId = null;
@@ -723,6 +857,7 @@ function doMove(p, r, c) {
 
 function doKill(p, target) {
   p.abilityUsed = true;
+  skipStreak = 0;
   pendingCapture = { r: target.r, c: target.c, type: target.type, side: target.side };
   announceAbility(p, target);
   log(`<b>🗡️ Instant Kill</b> – ${nameOf(p)} ➜ ${nameOf(target)}`, p.side);
@@ -734,6 +869,7 @@ function doKill(p, target) {
 
 function doStun(p, target) {
   p.abilityUsed = true;
+  skipStreak = 0;
   target.disabled = 1;
   announceAbility(p, target);
   log(`<b>🤐 Einschüchtern</b> – ${nameOf(p)} ➜ ${nameOf(target)}, eine Runde handlungsunfähig`, p.side);
@@ -752,7 +888,7 @@ function doDouble(p) {
 
 function onAbilityBtn() {
   const p = byId(selectedId);
-  if (!p || turn !== "you" || gameOver) return;
+  if (!p || gameOver || !isHuman(turn) || p.side !== turn) return;
 
   if (mode !== "move") { mode = "move"; render(); return; }   // abbrechen
   if (!abilityAvailable(p)) return;
@@ -783,19 +919,18 @@ function afterAction(side, endsTurn = false) {
   selectedId = null;
   mode = "move";
 
-  if (side === "you") {
-    turn = "bot";
-    render();
-    setTimeout(botTurn, 520);
-  } else {
-    turn = "you";
-    roundNum++;
-    render();
-    // Falls der Spieler komplett blockiert ist: passen
-    if (!hasAnyAction("you")) {
-      log("Du kannst nicht handeln – Runde wird übersprungen.", "you");
-      setTimeout(() => afterAction("you", true), 700);
-    }
+  const next = side === "you" ? "bot" : "you";
+  turn = next;
+  if (next === "you") roundNum++;
+  render();
+
+  if (next === "bot" && opponent === "bot") { setTimeout(botTurn, 520); return; }
+
+  // Menschliche Seite: wer nicht handeln kann, setzt aus
+  if (!hasAnyAction(next)) {
+    if (++skipStreak >= 2) { endGame(null, "Keine Seite kann noch ziehen."); render(); return; }
+    log(`${sideLabel(next)} kann nicht handeln – Runde wird übersprungen.`, next);
+    setTimeout(() => afterAction(next, true), 700);
   }
 }
 
@@ -805,125 +940,224 @@ function hasAnyAction(side) {
 
 function checkEnd() {
   if (gameOver) return true;
-  if (alive("bot").length === 0) return endGame(true, "Alle gegnerischen Figuren ausgeschaltet.");
-  if (alive("you").length === 0) return endGame(false, "Dein Team wurde ausgelöscht.");
+  const zwei = opponent === "friend";
+  if (alive("bot").length === 0)
+    return endGame("you", zwei ? "Spieler 2 hat keine Figuren mehr." : "Alle gegnerischen Figuren ausgeschaltet.");
+  if (alive("you").length === 0)
+    return endGame("bot", zwei ? "Spieler 1 hat keine Figuren mehr." : "Dein Team wurde ausgelöscht.");
   if (pieces.some(p => p.side === "you" && p.r === enemyHomeRow("you")))
-    return endGame(true, "Durchbruch! Du hast die gegnerische Grundreihe erreicht.");
+    return endGame("you", zwei ? "Spieler 1 hat die gegenüberliegende Grundreihe erreicht."
+                               : "Durchbruch! Du hast die gegnerische Grundreihe erreicht.");
   if (pieces.some(p => p.side === "bot" && p.r === enemyHomeRow("bot")))
-    return endGame(false, "Der Gegner hat deine Grundreihe erreicht.");
+    return endGame("bot", zwei ? "Spieler 2 hat die gegenüberliegende Grundreihe erreicht."
+                               : "Der Gegner hat deine Grundreihe erreicht.");
   return false;
 }
 
-function endGame(win, text) {
+function endGame(winner, text) {
   gameOver = true;
-  document.getElementById("ovEmoji").textContent = win ? "🏆" : "💀";
+  const zwei = opponent === "friend";
+  let emoji, titel, klasse;
+  if (winner === null) {
+    emoji = "🤝"; titel = "Unentschieden"; klasse = "";
+  } else if (zwei) {
+    emoji = "🏆"; titel = `${sideLabel(winner)} gewinnt`;
+    klasse = winner === "you" ? "win" : "lose";
+  } else if (winner === "you") {
+    emoji = "🏆"; titel = "Gewonnen 😎🤌"; klasse = "win";
+  } else {
+    emoji = "💀"; titel = "Verloren"; klasse = "lose";
+  }
+
+  document.getElementById("ovEmoji").textContent = emoji;
   const t = document.getElementById("ovTitle");
-  t.textContent = win ? "Gewonnen 😎🤌" : "Verloren";
-  t.className = "overlay-title " + (win ? "win" : "lose");
+  t.textContent = titel;
+  t.className = "overlay-title " + klasse;
   document.getElementById("ovText").textContent = text;
   document.getElementById("overlay").classList.remove("hidden");
-  log(win ? `<b>Sieg!</b> ${text}` : `<b>Niederlage.</b> ${text}`, "");
+  log(`<b>${titel}.</b> ${text}`, "");
   return true;
 }
 
 /* ============================================================
    Bot
    ============================================================ */
+const WIN_SCORE = 100000;
+
+/* Zeitbudget der Suche. Auf schnellen Geräten wird die volle Tiefe erreicht,
+   auf langsamen bricht sie sauber ab, statt die Oberfläche einfrieren zu lassen. */
+const SEARCH_BUDGET_MS = 350;
+let searchDeadline = 0;
+let searchNodes = 0;
+let searchTimeUp = false;
+
 function botTurn() { botAct(); }
 
 function botAct() {
   if (gameOver || turn !== "bot") return;
+  const lvl = LEVELS[difficulty];
 
   if (!hasAnyAction("bot")) {
-    log("Der Gegner kann nicht handeln.", "bot");
+    if (++skipStreak >= 2) { endGame(null, "Keine Seite kann noch ziehen."); render(); return; }
+    log("Der Bot kann nicht handeln – Runde wird übersprungen.", "bot");
     afterAction("bot", true);
     return;
   }
 
-  const units = alive("bot").filter(p => p.disabled === 0);
-
-  // 1) Ninja – Instant Kill
-  const ninjas = units.filter(p => p.type === "ninja" && !p.abilityUsed && killTargets(p).length);
-  if (ninjas.length) {
-    const n = ninjas[0];
-    const targets = killTargets(n).sort((a, b) => scoreTarget(b) - scoreTarget(a));
-    const best = targets[0];
-    if (TYPES[best.type].value >= 12 || best.r <= 3 || Math.random() < 0.35) {
-      doKill(n, best);
-      return;
-    }
+  // Doppelzug kostet keine Aktion, verschafft aber eine zusätzliche –
+  // deshalb vor der eigentlichen Wahl und nur, wenn es etwas zu holen gibt.
+  const dorf = alive("bot").find(p => p.type === "dorf" && !p.abilityUsed && p.disabled === 0);
+  if (dorf && movesLeft === 1 && Math.random() < lvl.abilityUse) {
+    const lohnt = alive("bot").some(p => p.disabled === 0 && legalMoves(p).some(m => m.capture));
+    if (lohnt) { doDouble(dorf); setTimeout(botAct, 420); return; }
   }
 
-  // 2) Mafia – Einschüchtern (bevorzugt weit vorgedrungene Spielerfiguren)
-  const mafias = units.filter(p => p.type === "mafia" && !p.abilityUsed && stunTargets(p).length);
-  if (mafias.length) {
-    const m = mafias[0];
-    const targets = stunTargets(m).sort((a, b) => a.r - b.r); // je kleiner r, desto tiefer im Botgebiet
-    const best = targets[0];
-    if (best.r <= 3 || Math.random() < 0.18) {
-      doStun(m, best);
-      return;
-    }
+  const a = chooseBotAction(lvl);
+  if (!a) { afterAction("bot", true); return; }
+  if (a.kind === "kill") { doKill(a.p, a.target); return; }
+  if (a.kind === "stun") { doStun(a.p, a.target); return; }
+  doMove(a.p, a.r, a.c);
+}
+
+/* ============================================================
+   Suche (Alpha-Beta). Die Stellung wird direkt verändert und
+   danach wieder zurückgenommen – kein Kopieren des Bretts.
+   ============================================================ */
+function genActions(side) {
+  const out = [];
+  for (const p of pieces) {
+    if (p.side !== side || p.disabled > 0) continue;
+    for (const m of legalMoves(p)) out.push({ kind: "move", p, r: m.r, c: m.c, cap: m.capture });
   }
+  out.sort((x, y) => (y.cap ? 1 : 0) - (x.cap ? 1 : 0));   // Schlagzüge zuerst → mehr Abschnitte
+  return out;
+}
 
-  // 3) Dorfbewohner – Doppelzug, wenn es etwas zu schlagen gibt
-  const dorfs = units.filter(p => p.type === "dorf" && !p.abilityUsed);
-  if (dorfs.length && movesLeft === 1) {
-    const captureAvailable = units.some(p => legalMoves(p).some(m => m.capture));
-    if (captureAvailable && Math.random() < 0.7) {
-      doDouble(dorfs[0]);
-      setTimeout(botMove, 420);
-      return;
-    }
+function applyAction(a) {
+  if (a.kind === "move") {
+    const victim = pieceAt(a.r, a.c);
+    const idx = victim ? pieces.indexOf(victim) : -1;
+    if (victim) pieces.splice(idx, 1);
+    const u = { kind: "move", p: a.p, r: a.p.r, c: a.p.c, victim, idx };
+    a.p.r = a.r; a.p.c = a.c;
+    return u;
   }
-
-  botMove();
+  if (a.kind === "kill") {
+    const idx = pieces.indexOf(a.target);
+    pieces.splice(idx, 1);
+    a.p.abilityUsed = true;
+    return { kind: "kill", p: a.p, target: a.target, idx };
+  }
+  a.p.abilityUsed = true;
+  a.target.disabled = 1;
+  return { kind: "stun", p: a.p, target: a.target };
 }
 
-function scoreTarget(p) {
-  // Wert + Bedrohung (je näher an der Botgrundreihe, desto gefährlicher)
-  return TYPES[p.type].value + (N - 1 - p.r);
+function undoAction(u) {
+  if (u.kind === "move") {
+    u.p.r = u.r; u.p.c = u.c;
+    if (u.victim) pieces.splice(u.idx, 0, u.victim);
+    return;
+  }
+  if (u.kind === "kill") {
+    pieces.splice(u.idx, 0, u.target);
+    u.p.abilityUsed = false;
+    return;
+  }
+  u.p.abilityUsed = false;
+  u.target.disabled = 0;
 }
 
-function botMove() {
-  if (gameOver || turn !== "bot") return;
-
-  const options = [];
-  alive("bot").filter(p => p.disabled === 0).forEach(p => {
-    legalMoves(p).forEach(m => options.push({ p, m, score: scoreMove(p, m) }));
-  });
-
-  if (!options.length) { afterAction("bot", true); return; }
-
-  options.sort((a, b) => b.score - a.score);
-  const top = options.filter(o => o.score >= options[0].score - 2);
-  const pick = top[Math.floor(Math.random() * top.length)];
-
-  // Ein weiterer Zug (Doppelzug) wird von afterAction() eingeplant.
-  doMove(pick.p, pick.m.r, pick.m.c);
+// Entschiedene Stellung? Frühe Siege zählen mehr als späte.
+function terminalScore(ply) {
+  let bot = 0, you = 0;
+  for (const p of pieces) {
+    if (p.side === "bot") { bot++; if (p.r === N - 1) return WIN_SCORE - ply; }
+    else { you++; if (p.r === 0) return -WIN_SCORE + ply; }
+  }
+  if (!you) return WIN_SCORE - ply;
+  if (!bot) return -WIN_SCORE + ply;
+  return null;
 }
 
-function scoreMove(p, m) {
+// Bewertung aus Sicht des Bots
+function evaluate() {
   let s = 0;
-  const victim = pieceAt(m.r, m.c);
-  if (victim) s += 40 + TYPES[victim.type].value;
-
-  // Vorwärtsdrang Richtung Spielergrundreihe (r = 9)
-  s += (m.r - p.r) * 3;
-  if (m.r === N - 1) s += 200;                     // Durchbruch = Sieg
-  s += (4 - Math.abs(m.c - 4.5)) * 0.4;            // leichte Zentrumsneigung
-
-  // Gefahr auf dem Zielfeld
-  if (isAttackedBy(m.r, m.c, "you", p)) s -= 18 + TYPES[p.type].value * 0.6;
-
-  // Ninjas mit ungenutztem Instant Kill lieber in Reichweite bringen
-  if (p.type === "ninja" && !p.abilityUsed) {
-    const near = pieces.some(o => o.side === "you" &&
-      Math.max(Math.abs(o.r - m.r), Math.abs(o.c - m.c)) <= 2);
-    if (near) s += 8;
+  for (const p of pieces) {
+    const t = TYPES[p.type];
+    const vorne = p.side === "bot" ? p.r : (N - 1 - p.r);
+    let v = t.value * 12 + vorne * vorne * 1.2;
+    if (!p.abilityUsed) v += 8;
+    if (p.disabled > 0) v -= 10;
+    if (isAttackedBy(p.r, p.c, p.side === "bot" ? "you" : "bot", p)) v -= t.value * 3;
+    s += p.side === "bot" ? v : -v;
   }
+  return s;
+}
 
-  return s + Math.random() * 2;
+function search(depth, alpha, beta, side, ply) {
+  const t = terminalScore(ply);
+  if (t !== null) return t;
+  if ((++searchNodes & 255) === 0 && performance.now() > searchDeadline) searchTimeUp = true;
+  if (depth <= 0 || searchTimeUp) return evaluate();
+
+  const acts = genActions(side);
+  if (!acts.length) return evaluate();
+
+  if (side === "bot") {
+    let best = -Infinity;
+    for (const a of acts) {
+      const u = applyAction(a);
+      const v = search(depth - 1, alpha, beta, "you", ply + 1);
+      undoAction(u);
+      if (v > best) best = v;
+      if (best > alpha) alpha = best;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+  let best = Infinity;
+  for (const a of acts) {
+    const u = applyAction(a);
+    const v = search(depth - 1, alpha, beta, "bot", ply + 1);
+    undoAction(u);
+    if (v < best) best = v;
+    if (best < beta) beta = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+function chooseBotAction(lvl) {
+  const acts = genActions("bot");
+
+  // Fähigkeiten treten als gleichwertige Kandidaten an
+  if (Math.random() < lvl.abilityUse) {
+    for (const p of pieces) {
+      if (p.side !== "bot" || p.disabled > 0 || p.abilityUsed) continue;
+      if (p.type === "ninja") killTargets(p).forEach(t => acts.push({ kind: "kill", p, target: t }));
+      if (p.type === "mafia") {
+        stunTargets(p).slice().sort((a, b) => a.r - b.r).slice(0, 3)
+          .forEach(t => acts.push({ kind: "stun", p, target: t }));
+      }
+    }
+  }
+  if (!acts.length) return null;
+  if (lvl.blunder && Math.random() < lvl.blunder) return acts[Math.floor(Math.random() * acts.length)];
+
+  searchNodes = 0;
+  searchTimeUp = false;
+  searchDeadline = performance.now() + SEARCH_BUDGET_MS;
+
+  let best = null, bestScore = -Infinity;
+  for (const a of acts) {
+    const u = applyAction(a);
+    let s = search(lvl.depth - 1, -Infinity, Infinity, "you", 1);
+    undoAction(u);
+    if (lvl.noise) s += (Math.random() - 0.5) * lvl.noise;
+    if (s > bestScore) { bestScore = s; best = a; }
+  }
+  return best;
 }
 
 function isAttackedBy(r, c, side, ignorePiece) {
@@ -949,9 +1183,10 @@ function isAttackedBy(r, c, side, ignorePiece) {
 function render() {
   const board = document.getElementById("board");
   const sel = byId(selectedId);
-  const moves = (turn === "you" && sel && mode === "move" && !gameOver) ? legalMoves(sel) : [];
-  const kills = (turn === "you" && sel && mode === "kill" && !gameOver) ? killTargets(sel) : [];
-  const stuns = (turn === "you" && sel && mode === "stun" && !gameOver) ? stunTargets(sel) : [];
+  const aktiv = isHuman(turn) && !gameOver;
+  const moves = (aktiv && sel && mode === "move") ? legalMoves(sel) : [];
+  const kills = (aktiv && sel && mode === "kill") ? killTargets(sel) : [];
+  const stuns = (aktiv && sel && mode === "stun") ? stunTargets(sel) : [];
 
   board.innerHTML = "";
   for (let r = 0; r < N; r++) {
@@ -968,7 +1203,7 @@ function render() {
         el.className = "piece " + (p.side === "you" ? "you" : "bot")
           + (p.id === selectedId ? " selected" : "")
           + (p.disabled > 0 ? " disabled" : "")
-          + (turn === "you" && p.side === "you" && !gameOver ? " actable" : "");
+          + (aktiv && p.side === turn ? " actable" : "");
         el.dataset.pid = p.id;
         el.textContent = TYPES[p.type].icon;
 
@@ -989,7 +1224,7 @@ function render() {
         cell.appendChild(ring);
       }
 
-      if (mv || isKill || isStun || (p && p.side === "you" && turn === "you")) cell.classList.add("movable");
+      if (mv || isKill || isStun || (p && aktiv && p.side === turn)) cell.classList.add("movable");
       cell.onclick = () => onCellClick(r, c);
       board.appendChild(cell);
     }
@@ -1002,20 +1237,23 @@ function render() {
 
   const tag = document.getElementById("turnTag");
   const hint = document.getElementById("turnHint");
+  const zusatz = movesLeft > 1 ? ` (${movesLeft} Züge)` : "";
   if (gameOver) {
     tag.className = "turn-tag";
     tag.textContent = "Spiel beendet";
     hint.textContent = "Neues Spiel starten";
-  } else if (turn === "you") {
-    tag.className = "turn-tag you";
-    tag.textContent = movesLeft > 1 ? `Du bist am Zug (${movesLeft} Züge)` : "Du bist am Zug";
+  } else if (isHuman(turn)) {
+    tag.className = "turn-tag " + (turn === "you" ? "you" : "bot");
+    tag.textContent = opponent === "friend"
+      ? `${sideLabel(turn)} am Zug${zusatz}`
+      : `Du bist am Zug${zusatz}`;
     hint.textContent = mode === "kill" ? "Ziel für Instant Kill wählen"
       : mode === "stun" ? "Ziel zum Einschüchtern wählen"
       : "Figur antippen, dann Zielfeld";
   } else {
     tag.className = "turn-tag bot";
-    tag.textContent = "Gegner am Zug";
-    hint.textContent = "…";
+    tag.textContent = "Bot am Zug";
+    hint.textContent = LEVELS[difficulty].name + " – rechnet …";
   }
 
   renderPanel(sel);
@@ -1122,7 +1360,7 @@ function renderPanel(sel) {
     btn.textContent = "✕ Abbrechen";
   } else {
     btn.className = "ability-btn";
-    const ok = abilityAvailable(sel) && turn === "you" && !gameOver;
+    const ok = abilityAvailable(sel) && isHuman(turn) && sel.side === turn && !gameOver;
     btn.disabled = !ok;
     btn.textContent = sel.abilityUsed ? `${t.ability} – verbraucht` : `⚡ ${t.ability}`;
     if (!sel.abilityUsed && !ok && sel.type === "ninja") btn.textContent = `${t.ability} – kein Ziel in Reichweite`;
@@ -1130,7 +1368,10 @@ function renderPanel(sel) {
   }
 }
 
-function sideWord(side) { return side === "you" ? "Dein" : "Gegnerischer"; }
+function sideLabel(side) {
+  if (opponent === "friend") return side === "you" ? "Spieler 1" : "Spieler 2";
+  return side === "you" ? "Du" : "Der Bot";
+}
 
 /* ---------- Benennung von Figuren ----------
    Feldkoordinate im Schachstil (Spalten A–J, Reihe 1 = deine Grundreihe),
@@ -1139,6 +1380,9 @@ function coord(p) { return String.fromCharCode(65 + p.c) + (N - p.r); }
 
 function nameOf(p) {
   const t = TYPES[p.type];
+  if (opponent === "friend") {
+    return `${p.side === "you" ? "Spieler 1" : "Spieler 2"}: ${t.name} (${coord(p)})`;
+  }
   const artikel = p.side === "you"
     ? (t.genus === "f" ? "Deine" : "Dein")
     : (t.genus === "f" ? "Gegnerische" : "Gegnerischer");
@@ -1214,7 +1458,7 @@ function toggleRules() {
 }
 
 /* ---------- Init ---------- */
-buildCharList();
+renderPickScreen();
 </script>
 </body>
 </html>
