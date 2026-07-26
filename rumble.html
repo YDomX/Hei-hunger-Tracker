@@ -222,6 +222,36 @@
   .cell .ring.kill { border-color: var(--enemy); box-shadow: 0 0 10px rgba(248,113,113,0.5); }
   .cell .ring.stun { border-color: #a78bfa; box-shadow: 0 0 10px rgba(167,139,250,0.5); }
 
+  /* Einblendung beim Einsatz einer Fähigkeit */
+  .ability-toast {
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    transform: translateX(-50%);
+    max-width: 94%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 9px 16px;
+    border-radius: 9px;
+    background: rgba(12,12,12,0.95);
+    border: 1px solid var(--accent);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    text-align: center;
+    pointer-events: none;
+    z-index: 20;
+  }
+  .ability-toast.bot { border-color: var(--enemy); }
+  .toast-kind {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text4); font-weight: 600;
+  }
+  .toast-title { font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
+  .ability-toast.bot .toast-title { color: var(--enemy); }
+  .toast-actors { font-size: 11.5px; color: var(--text2); line-height: 1.4; }
+  .toast-actors .arrow { color: var(--text4); padding: 0 3px; }
+
   /* Panel unter dem Brett */
   .panel {
     margin-top: 12px;
@@ -350,6 +380,11 @@
 
     <div class="board-wrap">
       <div class="board" id="board"></div>
+      <div class="ability-toast hidden" id="abilityToast" role="status" aria-live="polite">
+        <span class="toast-kind">Fähigkeit eingesetzt</span>
+        <span class="toast-title" id="toastTitle"></span>
+        <span class="toast-actors" id="toastActors"></span>
+      </div>
     </div>
 
     <div class="panel" id="panel">
@@ -408,6 +443,7 @@ const N = 10;
 const TYPES = {
   dorf: {
     key: "dorf", name: "Dorfbewohner", icon: "🧑‍🌾", role: "Der Fleißige", value: 10,
+    genus: "m", abilityIcon: "⚡",
     move: "1 Feld vorwärts · 2 Felder nach links oder rechts (Sprung)",
     ability: "Doppelzug",
     abilityDesc: "Diese Runde 2 Züge statt 1. Der zweite Zug ist mit jeder deiner Figuren möglich.",
@@ -415,6 +451,7 @@ const TYPES = {
   },
   ninja: {
     key: "ninja", name: "Ninja", icon: "🥷", role: "Der Schatten", value: 14,
+    genus: "m", abilityIcon: "🗡️",
     move: "1 oder 2 Felder vorwärts oder rückwärts (gleiche Spalte)",
     ability: "Instant Kill",
     abilityDesc: "Tötet sofort eine gegnerische Figur im Umkreis von 2 Feldern – ohne sich zu bewegen.",
@@ -422,6 +459,7 @@ const TYPES = {
   },
   mafia: {
     key: "mafia", name: "Mafia", icon: "🕴️", role: "Die Familie", value: 12,
+    genus: "f", abilityIcon: "🤐",
     move: "1 Feld vorwärts · 2 Felder nach links oder rechts (Sprung)",
     ability: "Einschüchtern",
     abilityDesc: "Macht eine beliebige gegnerische Figur für eine Runde handlungsunfähig.",
@@ -533,6 +571,7 @@ function startGame() {
   document.getElementById("roundBox").classList.remove("hidden");
   document.getElementById("overlay").classList.add("hidden");
   document.getElementById("rulesBox").classList.add("hidden");
+  resetToast();
 
   log(`Gegner spielt <b>${TYPES[botType].name}</b>. Du spielst <b>${TYPES[pickedType].name}</b>.`, "");
   render();
@@ -543,6 +582,7 @@ function newPiece(type, side, r, c) {
 }
 
 function backToPick() {
+  resetToast();
   document.getElementById("overlay").classList.add("hidden");
   document.getElementById("viewGame").classList.add("hidden");
   document.getElementById("roundBox").classList.add("hidden");
@@ -661,8 +701,9 @@ function doMove(p, r, c) {
 function doKill(p, target) {
   p.abilityUsed = true;
   pendingCapture = { r: target.r, c: target.c, type: target.type, side: target.side };
+  announceAbility(p, target);
+  log(`<b>🗡️ Instant Kill</b> – ${nameOf(p)} ➜ ${nameOf(target)}`, p.side);
   pieces = pieces.filter(x => x.id !== target.id);
-  log(`${sideWord(p.side)} Ninja: <b>Instant Kill</b> auf ${TYPES[target.type].name}. 🗡️`, p.side);
   selectedId = null;
   mode = "move";
   afterAction(p.side);
@@ -671,7 +712,8 @@ function doKill(p, target) {
 function doStun(p, target) {
   p.abilityUsed = true;
   target.disabled = 1;
-  log(`${sideWord(p.side)} Mafia schüchtert ${TYPES[target.type].name} ein – eine Runde handlungsunfähig. 🤐`, p.side);
+  announceAbility(p, target);
+  log(`<b>🤐 Einschüchtern</b> – ${nameOf(p)} ➜ ${nameOf(target)}, eine Runde handlungsunfähig`, p.side);
   selectedId = null;
   mode = "move";
   afterAction(p.side);
@@ -680,7 +722,8 @@ function doStun(p, target) {
 function doDouble(p) {
   p.abilityUsed = true;
   movesLeft = 2;
-  log(`${sideWord(p.side)} Dorfbewohner nutzt <b>Doppelzug</b> – 2 Züge diese Runde. ⚡`, p.side);
+  announceAbility(p, null);
+  log(`<b>⚡ Doppelzug</b> – ${nameOf(p)} ➜ 2 Züge in dieser Runde`, p.side);
   render();
 }
 
@@ -1065,6 +1108,69 @@ function renderPanel(sel) {
 }
 
 function sideWord(side) { return side === "you" ? "Dein" : "Gegnerischer"; }
+
+/* ---------- Benennung von Figuren ----------
+   Feldkoordinate im Schachstil (Spalten A–J, Reihe 1 = deine Grundreihe),
+   damit bei drei gleichen Figuren klar ist, welche gemeint ist.            */
+function coord(p) { return String.fromCharCode(65 + p.c) + (N - p.r); }
+
+function nameOf(p) {
+  const t = TYPES[p.type];
+  const artikel = p.side === "you"
+    ? (t.genus === "f" ? "Deine" : "Dein")
+    : (t.genus === "f" ? "Gegnerische" : "Gegnerischer");
+  return `${artikel} ${t.name} (${coord(p)})`;
+}
+
+/* ---------- Einblendung beim Einsatz einer Fähigkeit ---------- */
+let toastSeq = 0;
+let toastTimer = null;
+let toastAnim = null;
+
+function announceAbility(actor, target) {
+  const t = TYPES[actor.type];
+  const el = document.getElementById("abilityToast");
+  const my = ++toastSeq;
+
+  document.getElementById("toastTitle").textContent = `${t.abilityIcon} ${t.ability}`;
+
+  const box = document.getElementById("toastActors");
+  box.textContent = "";
+  box.appendChild(document.createTextNode(nameOf(actor)));
+  const arrow = document.createElement("span");
+  arrow.className = "arrow";
+  arrow.textContent = "➜";
+  box.appendChild(arrow);
+  box.appendChild(document.createTextNode(target ? nameOf(target) : "2 Züge in dieser Runde"));
+
+  el.className = "ability-toast" + (actor.side === "bot" ? " bot" : "");
+
+  clearTimeout(toastTimer);
+  if (toastAnim) toastAnim.cancel();
+  if (el.animate && !reducedMotion()) {
+    toastAnim = el.animate(
+      [{ opacity: 0, transform: "translateX(-50%) translateY(-10px)" },
+       { opacity: 1, transform: "translateX(-50%) translateY(0)" }],
+      { duration: 200, easing: "ease-out" });
+  }
+  toastTimer = setTimeout(() => hideToast(my), 2600);
+}
+
+function hideToast(my) {
+  const el = document.getElementById("abilityToast");
+  if (my !== undefined && my !== toastSeq) return;   // schon von einer neueren Meldung abgelöst
+  if (!el.animate || reducedMotion()) { el.classList.add("hidden"); return; }
+  if (toastAnim) toastAnim.cancel();
+  toastAnim = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: "ease-in" });
+  toastAnim.onfinish = () => { if (my === undefined || my === toastSeq) el.classList.add("hidden"); };
+}
+
+function resetToast() {
+  clearTimeout(toastTimer);
+  if (toastAnim) { toastAnim.cancel(); toastAnim = null; }
+  toastSeq++;
+  document.getElementById("abilityToast").classList.add("hidden");
+}
 
 function log(html, side) {
   logLines.unshift({ html, side });
